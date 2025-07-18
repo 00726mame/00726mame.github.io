@@ -40,8 +40,8 @@ const SimpleBudgetApp = () => {
   // フォーカス管理
   const amountInputRef = useRef(null);
   const descriptionInputRef = useRef(null);
-  // 修正点 1: フォーカス状態を文字列で管理するように変更
-  const [focusedInput, setFocusedInput] = useState(null); // 'amount', 'description', or null
+  const searchInputRef = useRef(null); // 検索フィールド用のrefを追加
+  const [focusedInput, setFocusedInput] = useState(null); // 'amount', 'description', 'search', or null
 
   // シンプルなカテゴリー設定（デフォルト）
   const defaultCategories = {
@@ -201,7 +201,9 @@ const SimpleBudgetApp = () => {
     setDescription(e.target.value);
   };
 
-  // 修正点 2: 金額入力のフォーカス復元ロジックを修正
+  // --- 修正点 ---
+  // 金額入力のフォーカス復元ロジックを修正
+  // 依存配列から `amount` を削除し、入力のたびにeffectが実行されるのを防ぐ
   useEffect(() => {
     if (focusedInput === 'amount' && amountInputRef.current && currentView === 'add') {
       const timeoutId = setTimeout(() => {
@@ -209,9 +211,10 @@ const SimpleBudgetApp = () => {
       }, 10);
       return () => clearTimeout(timeoutId);
     }
-  }, [amount, focusedInput, currentView]);
+  }, [focusedInput, currentView]);
 
-  // 修正点 3: 説明入力のフォーカス復元ロジックを修正
+  // 説明入力のフォーカス復元ロジックを修正
+  // 依存配列から `description` を削除
   useEffect(() => {
     if (focusedInput === 'description' && descriptionInputRef.current && currentView === 'add') {
       const timeoutId = setTimeout(() => {
@@ -219,7 +222,17 @@ const SimpleBudgetApp = () => {
       }, 10);
       return () => clearTimeout(timeoutId);
     }
-  }, [description, focusedInput, currentView]);
+  }, [focusedInput, currentView]);
+
+  // 検索入力のフォーカス復元ロジックを追加
+  useEffect(() => {
+    if (focusedInput === 'search' && searchInputRef.current && currentView === 'home') {
+      const timeoutId = setTimeout(() => {
+        searchInputRef.current.focus();
+      }, 10);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [focusedInput, currentView]);
 
 
   // 取引削除
@@ -410,10 +423,15 @@ const SimpleBudgetApp = () => {
       {/* 検索・フィルター */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4 mb-4`}>
         <div className="flex gap-2 mb-3">
+          {/* --- 修正点 --- */}
+          {/* 検索フィールドにrefとフォーカスイベントハンドラを追加 */}
           <input
+            ref={searchInputRef}
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onFocus={() => setFocusedInput('search')}
+            onBlur={() => setFocusedInput(null)}
             placeholder="取引を検索..."
             className={`flex-1 px-3 py-2 border rounded-md ${
               darkMode 
@@ -594,7 +612,6 @@ const SimpleBudgetApp = () => {
               pattern="[0-9]*"
               value={amount}
               onChange={handleAmountChange}
-              // 修正点 4: onFocus/onBlurでどの入力かを設定
               onFocus={() => setFocusedInput('amount')}
               onBlur={() => setFocusedInput(null)}
               placeholder="金額を入力"
@@ -650,7 +667,6 @@ const SimpleBudgetApp = () => {
               type="text"
               value={description}
               onChange={handleDescriptionChange}
-              // 修正点 5: onFocus/onBlurでどの入力かを設定
               onFocus={() => setFocusedInput('description')}
               onBlur={() => setFocusedInput(null)}
               placeholder="説明を入力"
