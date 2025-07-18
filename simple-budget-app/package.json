@@ -5,10 +5,11 @@
   "homepage": "https://00726mame.github.io/",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "start": "vite start",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
+    "test": "vite test",
+    "eject": "vite eject",
+    "predeploy": "npm run build",
     "deploy": "gh-pages -d build"
   },
   "dependencies": {
