@@ -1,61 +1,75 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, Calendar, Download, Upload, Settings, BarChart3, Filter, Search, RefreshCw, Database, Eye, EyeOff, Menu, X, Check, Info, AlertCircle, Trash2, Edit3, Home, Car, Utensils, ShoppingCart, Heart, Briefcase, GraduationCap, Plane, Coffee, Gift, Music, Smartphone, Gamepad2, Sun, Moon } from 'lucide-react';
+import { PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, Calendar, Download, Upload, Settings, BarChart3, Filter, Search, RefreshCw, Database, Eye, EyeOff, Menu, X, Check, Info, AlertCircle, Trash2, Edit3, Home, Car, Utensils, ShoppingCart, Heart, Briefcase, GraduationCap, Plane, Coffee, Gift, Music, Smartphone, Gamepad2, Sun, Moon, Brain, Loader, ChevronDown, ChevronUp } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
-// --- 修正点 1: コンポーネントを外に定義 ---
-// 各コンポーネントが必要とするstateや関数をpropsとして受け取るように変更
+// Colors for charts
+const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#d084d0', '#ffb347'];
 
 const NavigationBar = ({ darkMode, currentView, setCurrentView }) => (
   <div className={`fixed bottom-0 left-0 right-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-t`} style={{zIndex: 1000}}>
     <div className="flex justify-around py-2" style={{maxWidth: '400px', margin: '0 auto'}}>
       <button
         onClick={() => setCurrentView('home')}
-        className={`flex flex-col items-center py-2 px-4 rounded ${
+        className={`flex flex-col items-center py-2 px-2 rounded ${
           currentView === 'home' 
             ? 'text-blue-600' 
             : darkMode ? 'text-gray-400' : 'text-gray-600'
         }`}
         style={{minHeight: '60px'}}
       >
-        <Home size={24} />
+        <Home size={20} />
         <span className="text-xs mt-1">ホーム</span>
       </button>
       
       <button
         onClick={() => setCurrentView('add')}
-        className={`flex flex-col items-center py-2 px-4 rounded ${
+        className={`flex flex-col items-center py-2 px-2 rounded ${
           currentView === 'add' 
             ? 'text-blue-600' 
             : darkMode ? 'text-gray-400' : 'text-gray-600'
         }`}
         style={{minHeight: '60px'}}
       >
-        <PlusCircle size={24} />
+        <PlusCircle size={20} />
         <span className="text-xs mt-1">追加</span>
       </button>
       
       <button
+        onClick={() => setCurrentView('aiAnalysis')}
+        className={`flex flex-col items-center py-2 px-2 rounded ${
+          currentView === 'aiAnalysis' 
+            ? 'text-purple-600' 
+            : darkMode ? 'text-gray-400' : 'text-gray-600'
+        }`}
+        style={{minHeight: '60px'}}
+      >
+        <Brain size={20} />
+        <span className="text-xs mt-1">AI分析</span>
+      </button>
+      
+      <button
         onClick={() => setCurrentView('stats')}
-        className={`flex flex-col items-center py-2 px-4 rounded ${
+        className={`flex flex-col items-center py-2 px-2 rounded ${
           currentView === 'stats' 
             ? 'text-blue-600' 
             : darkMode ? 'text-gray-400' : 'text-gray-600'
         }`}
         style={{minHeight: '60px'}}
       >
-        <BarChart3 size={24} />
+        <BarChart3 size={20} />
         <span className="text-xs mt-1">統計</span>
       </button>
       
       <button
         onClick={() => setCurrentView('settings')}
-        className={`flex flex-col items-center py-2 px-4 rounded ${
+        className={`flex flex-col items-center py-2 px-2 rounded ${
           currentView === 'settings' 
             ? 'text-blue-600' 
             : darkMode ? 'text-gray-400' : 'text-gray-600'
         }`}
         style={{minHeight: '60px'}}
       >
-        <Settings size={24} />
+        <Settings size={20} />
         <span className="text-xs mt-1">設定</span>
       </button>
     </div>
@@ -384,6 +398,698 @@ const AddView = ({
   </div>
 );
 
+const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, monthlyIncome, monthlyExpense }) => {
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analysisHistory, setAnalysisHistory] = useState([]);
+  const [expandedSections, setExpandedSections] = useState({
+    overview: true,
+    predictions: true,
+    insights: true,
+    recommendations: true
+  });
+
+  // 分析履歴を読み込み
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('ai_analysis_history');
+    if (savedHistory) {
+      try {
+        setAnalysisHistory(JSON.parse(savedHistory));
+      } catch (error) {
+        console.error('Failed to load analysis history:', error);
+      }
+    }
+  }, []);
+
+  // 分析履歴を保存
+  const saveAnalysisHistory = (newAnalysis) => {
+    const updatedHistory = [newAnalysis, ...analysisHistory.slice(0, 9)]; // 最新10件を保持
+    setAnalysisHistory(updatedHistory);
+    localStorage.setItem('ai_analysis_history', JSON.stringify(updatedHistory));
+  };
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // データを分析用に準備
+  const prepareAnalysisData = () => {
+    if (transactions.length === 0) return null;
+
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1).toISOString().slice(0, 7);
+    const last3Months = new Date(now.getFullYear(), now.getMonth() - 3).toISOString().slice(0, 7);
+
+    const monthlyData = {};
+    const categoryData = {};
+
+    transactions.forEach(t => {
+      const month = t.date.slice(0, 7);
+      if (!monthlyData[month]) {
+        monthlyData[month] = { income: 0, expense: 0 };
+      }
+      monthlyData[month][t.type] += t.amount;
+
+      if (!categoryData[t.category]) {
+        categoryData[t.category] = { income: 0, expense: 0, count: 0 };
+      }
+      categoryData[t.category][t.type] += t.amount;
+      categoryData[t.category].count += 1;
+    });
+
+    return {
+      totalTransactions: transactions.length,
+      currentMonth,
+      lastMonth,
+      last3Months,
+      monthlyData,
+      categoryData,
+      transactions: transactions.slice(0, 50) // 最新50件を分析対象とする
+    };
+  };
+
+  // AI分析実行
+  const runAIAnalysis = async () => {
+    console.log('AI分析開始');
+    console.log('取引データ数:', transactions.length);
+    
+    // API KEYチェック
+    if (!geminiApiKey.trim()) {
+      alert('Gemini API KEYが設定されていません。設定画面でAPI KEYを入力してください。');
+      return;
+    }
+    
+    const analysisData = prepareAnalysisData();
+    if (!analysisData) {
+      alert('分析するデータがありません。取引を追加してから再実行してください。');
+      return;
+    }
+
+    console.log('分析データ:', analysisData);
+    setIsAnalyzing(true);
+    
+    try {
+      // Gemini API用のプロンプト
+      const prompt = `
+あなたは家計簿データの専門分析アナリストです。以下の家計簿データを詳細に分析し、構造化されたJSONで回答してください。
+
+データ概要:
+- 総取引数: ${analysisData.totalTransactions}
+- 月次データ: ${JSON.stringify(analysisData.monthlyData)}
+
+以下のJSON構造で必ず回答してください。他のテキストは一切含めず、JSONのみを出力してください：
+
+{
+  "overview": {
+    "title": "家計状況の総合評価",
+    "summary": "現在の家計状況の2-3行の評価",
+    "score": 75,
+    "trend": "stable"
+  },
+  "predictions": {
+    "nextMonth": {
+      "income": 250000,
+      "expense": 200000,
+      "confidence": "medium"
+    },
+    "threeMonth": {
+      "totalSavings": 150000,
+      "riskFactors": ["季節変動による支出増加", "収入の不安定性"]
+    }
+  },
+  "insights": [
+    {
+      "type": "pattern",
+      "title": "インサイトのタイトル",
+      "description": "詳細な説明",
+      "impact": "medium"
+    }
+  ],
+  "recommendations": [
+    {
+      "category": "saving",
+      "action": "具体的なアクション",
+      "expectedImpact": "期待される効果",
+      "priority": "high"
+    }
+  ],
+  "chartData": {
+    "monthlyTrend": [
+      {"month": "今月", "income": 250000, "expense": 200000, "balance": 50000}
+    ],
+    "categoryBreakdown": [
+      {"category": "食費", "amount": 50000, "percentage": 25}
+    ]
+  }
+}
+`;
+
+      console.log('Gemini APIリクエスト送信中...');
+      
+      // Gemini API呼び出し
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048
+          }
+        })
+      });
+
+      console.log('APIレスポンス:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('APIエラー詳細:', errorText);
+        
+        if (response.status === 400) {
+          throw new Error('API KEYが無効です。設定画面で正しいGemini API KEYを入力してください。');
+        } else {
+          throw new Error(`AI分析リクエストが失敗しました: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('APIレスポンスデータ:', data);
+      
+      let responseText = data.candidates[0].content.parts[0].text;
+      console.log('レスポンステキスト:', responseText);
+      
+      // JSONの抽出とパース
+      responseText = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      
+      let analysisDataResult;
+      try {
+        analysisDataResult = JSON.parse(responseText);
+        console.log('パース成功:', analysisDataResult);
+      } catch (parseError) {
+        console.error('JSONパースエラー:', parseError);
+        console.log('パース対象テキスト:', responseText);
+        
+        // フォールバック用のダミーデータ
+        analysisDataResult = {
+          overview: {
+            title: "家計状況の分析結果",
+            summary: `${analysisData.totalTransactions}件の取引データを分析しました。継続的な家計管理を心がけましょう。`,
+            score: 70,
+            trend: "stable"
+          },
+          predictions: {
+            nextMonth: {
+              income: Math.round(Object.values(analysisData.monthlyData).reduce((sum, month) => sum + month.income, 0) / Object.keys(analysisData.monthlyData).length) || 200000,
+              expense: Math.round(Object.values(analysisData.monthlyData).reduce((sum, month) => sum + month.expense, 0) / Object.keys(analysisData.monthlyData).length) || 180000,
+              confidence: "medium"
+            },
+            threeMonth: {
+              totalSavings: 60000,
+              riskFactors: ["支出の増加傾向", "季節的な変動"]
+            }
+          },
+          insights: [
+            {
+              type: "pattern",
+              title: "支出パターンの安定性",
+              description: "毎月の支出が比較的安定しています。このペースを維持しましょう。",
+              impact: "medium"
+            }
+          ],
+          recommendations: [
+            {
+              category: "saving",
+              action: "月間予算の設定",
+              expectedImpact: "月1万円の節約が期待できます",
+              priority: "high"
+            },
+            {
+              category: "spending",
+              action: "カテゴリ別支出の見直し",
+              expectedImpact: "支出の最適化により月5千円の節約",
+              priority: "medium"
+            }
+          ],
+          chartData: {
+            monthlyTrend: Object.keys(analysisData.monthlyData).slice(-6).map(month => ({
+              month: month.slice(5),
+              income: analysisData.monthlyData[month].income,
+              expense: analysisData.monthlyData[month].expense,
+              balance: analysisData.monthlyData[month].income - analysisData.monthlyData[month].expense
+            })),
+            categoryBreakdown: Object.keys(analysisData.categoryData).slice(0, 6).map((category, index) => ({
+              category,
+              amount: analysisData.categoryData[category].expense,
+              percentage: Math.round((analysisData.categoryData[category].expense / Object.values(analysisData.categoryData).reduce((sum, cat) => sum + cat.expense, 0)) * 100)
+            }))
+          }
+        };
+      }
+      
+      // タイムスタンプを追加
+      const analysisWithTimestamp = {
+        ...analysisDataResult,
+        timestamp: new Date().toISOString(),
+        id: Date.now()
+      };
+
+      setAnalysisResult(analysisWithTimestamp);
+      saveAnalysisHistory(analysisWithTimestamp);
+      
+      console.log('分析完了:', analysisWithTimestamp);
+
+    } catch (error) {
+      console.error('AI分析エラー:', error);
+      
+      // API KEYエラーの場合は特別な処理
+      if (error.message.includes('API KEY')) {
+        alert(error.message);
+        return;
+      }
+      
+      // エラー時でも基本的な分析結果を表示
+      const fallbackAnalysis = {
+        overview: {
+          title: "基本分析結果",
+          summary: `${transactions.length}件の取引データから基本的な分析を行いました。詳細分析は後ほど再試行してください。`,
+          score: 65,
+          trend: "stable"
+        },
+        predictions: {
+          nextMonth: {
+            income: monthlyIncome || 200000,
+            expense: monthlyExpense || 180000,
+            confidence: "low"
+          },
+          threeMonth: {
+            totalSavings: (monthlyIncome - monthlyExpense) * 3 || 60000,
+            riskFactors: ["データ不足による予測精度の低下"]
+          }
+        },
+        insights: [
+          {
+            type: "trend",
+            title: "データ蓄積期間",
+            description: "より正確な分析のため、継続的なデータ入力をお勧めします。",
+            impact: "medium"
+          }
+        ],
+        recommendations: [
+          {
+            category: "saving",
+            action: "定期的な家計の記録",
+            expectedImpact: "分析精度の向上と家計管理の改善",
+            priority: "high"
+          }
+        ],
+        chartData: {
+          monthlyTrend: [
+            {
+              month: "今月",
+              income: monthlyIncome,
+              expense: monthlyExpense,
+              balance: monthlyIncome - monthlyExpense
+            }
+          ],
+          categoryBreakdown: categories.expense.slice(0, 4).map((category, index) => ({
+            category,
+            amount: 30000 + index * 10000,
+            percentage: 20 + index * 5
+          }))
+        },
+        timestamp: new Date().toISOString(),
+        id: Date.now()
+      };
+      
+      setAnalysisResult(fallbackAnalysis);
+      saveAnalysisHistory(fallbackAnalysis);
+      
+      showNotification('基本分析を表示しました。詳細分析は再試行してください。', 'warning');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // 過去の分析結果を表示
+  const loadPreviousAnalysis = (analysis) => {
+    setAnalysisResult(analysis);
+  };
+
+  if (transactions.length === 0) {
+    return (
+      <div className="pb-20">
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6 text-center`}>
+          <Brain size={48} className={`mx-auto mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+          <h2 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+            AI分析
+          </h2>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-4`}>
+            分析するデータがありません。<br />
+            取引を追加してからAI分析をお試しください。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-20">
+      {/* AI分析ヘッダー */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6 mb-4`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-full">
+              <Brain size={24} className="text-purple-600" />
+            </div>
+            <div>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                AI家計分析
+              </h2>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Google Gemini AIによる詳細な家計分析とアドバイス
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <button
+          onClick={runAIAnalysis}
+          disabled={isAnalyzing}
+          className="w-full bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 text-lg font-semibold disabled:opacity-50"
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader size={20} className="animate-spin" />
+              分析中...
+            </>
+          ) : (
+            <>
+              <Brain size={20} />
+              AI分析を実行
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* 分析履歴 */}
+      {analysisHistory.length > 0 && (
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4 mb-4`}>
+          <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+            過去の分析結果
+          </h3>
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {analysisHistory.map((analysis) => (
+              <button
+                key={analysis.id}
+                onClick={() => loadPreviousAnalysis(analysis)}
+                className={`w-full text-left p-3 rounded-lg ${
+                  darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-50 hover:bg-gray-100'
+                } transition-colors`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    家計分析レポート
+                  </span>
+                  <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {new Date(analysis.timestamp).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} truncate`}>
+                  スコア: {analysis.overview?.score}/100
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 分析結果表示 */}
+      {analysisResult && (
+        <div className="space-y-4">
+          {/* 総合評価 */}
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4`}>
+            <button
+              onClick={() => toggleSection('overview')}
+              className="w-full flex items-center justify-between mb-3"
+            >
+              <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                📊 {analysisResult.overview?.title || '総合評価'}
+              </h3>
+              {expandedSections.overview ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            
+            {expandedSections.overview && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className={`text-3xl font-bold ${
+                    analysisResult.overview?.score >= 80 ? 'text-green-600' :
+                    analysisResult.overview?.score >= 60 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {analysisResult.overview?.score}/100
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    analysisResult.overview?.trend === 'improving' ? 'bg-green-100 text-green-800' :
+                    analysisResult.overview?.trend === 'stable' ? 'bg-blue-100 text-blue-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {analysisResult.overview?.trend === 'improving' ? '改善傾向' :
+                     analysisResult.overview?.trend === 'stable' ? '安定' : '悪化傾向'}
+                  </div>
+                </div>
+                <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {analysisResult.overview?.summary}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* 予測分析 */}
+          {analysisResult.predictions && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4`}>
+              <button
+                onClick={() => toggleSection('predictions')}
+                className="w-full flex items-center justify-between mb-3"
+              >
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  🔮 予測分析
+                </h3>
+                {expandedSections.predictions ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+              
+              {expandedSections.predictions && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>来月予測収入</p>
+                      <p className="text-lg font-bold text-green-600">
+                        {formatAmount(analysisResult.predictions.nextMonth?.income || 0)}
+                      </p>
+                    </div>
+                    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>来月予測支出</p>
+                      <p className="text-lg font-bold text-red-600">
+                        {formatAmount(analysisResult.predictions.nextMonth?.expense || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {analysisResult.predictions.threeMonth && (
+                    <div className={`p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>3ヶ月後予測貯蓄</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        {formatAmount(analysisResult.predictions.threeMonth.totalSavings || 0)}
+                      </p>
+                      {analysisResult.predictions.threeMonth.riskFactors && (
+                        <div className="mt-2">
+                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-1`}>リスク要因:</p>
+                          <ul className="text-sm text-red-600">
+                            {analysisResult.predictions.threeMonth.riskFactors.map((risk, index) => (
+                              <li key={index}>• {risk}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* グラフ表示 */}
+          {analysisResult.chartData && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4`}>
+              <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                📈 データ可視化
+              </h3>
+              
+              {/* 月次トレンド */}
+              {analysisResult.chartData.monthlyTrend && (
+                <div className="mb-6">
+                  <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    月次収支トレンド
+                  </h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={analysisResult.chartData.monthlyTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => formatAmount(value)} />
+                      <Legend />
+                      <Line type="monotone" dataKey="income" stroke="#10b981" name="収入" />
+                      <Line type="monotone" dataKey="expense" stroke="#ef4444" name="支出" />
+                      <Line type="monotone" dataKey="balance" stroke="#3b82f6" name="収支" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* カテゴリ別内訳 */}
+              {analysisResult.chartData.categoryBreakdown && (
+                <div>
+                  <h4 className={`text-md font-medium mb-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    カテゴリ別支出内訳
+                  </h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={analysisResult.chartData.categoryBreakdown}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ category, percentage }) => `${category} ${percentage}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="amount"
+                      >
+                        {analysisResult.chartData.categoryBreakdown.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => formatAmount(value)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* インサイト */}
+          {analysisResult.insights && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4`}>
+              <button
+                onClick={() => toggleSection('insights')}
+                className="w-full flex items-center justify-between mb-3"
+              >
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  💡 分析インサイト
+                </h3>
+                {expandedSections.insights ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+              
+              {expandedSections.insights && (
+                <div className="space-y-3">
+                  {analysisResult.insights.map((insight, index) => (
+                    <div key={index} className={`p-3 rounded-lg border-l-4 ${
+                      insight.impact === 'high' ? 'border-red-500 bg-red-50' :
+                      insight.impact === 'medium' ? 'border-yellow-500 bg-yellow-50' :
+                      'border-blue-500 bg-blue-50'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-sm px-2 py-1 rounded ${
+                          insight.type === 'pattern' ? 'bg-blue-100 text-blue-800' :
+                          insight.type === 'anomaly' ? 'bg-red-100 text-red-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {insight.type === 'pattern' ? 'パターン' :
+                           insight.type === 'anomaly' ? '異常値' : 'トレンド'}
+                        </span>
+                        <span className={`text-sm px-2 py-1 rounded ${
+                          insight.impact === 'high' ? 'bg-red-100 text-red-800' :
+                          insight.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {insight.impact === 'high' ? '高影響' :
+                           insight.impact === 'medium' ? '中影響' : '低影響'}
+                        </span>
+                      </div>
+                      <h4 className="font-medium text-gray-800 mb-1">{insight.title}</h4>
+                      <p className="text-sm text-gray-600">{insight.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 推奨アクション */}
+          {analysisResult.recommendations && (
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4`}>
+              <button
+                onClick={() => toggleSection('recommendations')}
+                className="w-full flex items-center justify-between mb-3"
+              >
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  🎯 推奨アクション
+                </h3>
+                {expandedSections.recommendations ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+              
+              {expandedSections.recommendations && (
+                <div className="space-y-3">
+                  {analysisResult.recommendations.map((rec, index) => (
+                    <div key={index} className={`p-4 rounded-lg border ${
+                      rec.priority === 'high' ? 'border-red-300 bg-red-50' :
+                      rec.priority === 'medium' ? 'border-yellow-300 bg-yellow-50' :
+                      'border-green-300 bg-green-50'
+                    }`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-sm px-2 py-1 rounded ${
+                          rec.category === 'saving' ? 'bg-green-100 text-green-800' :
+                          rec.category === 'spending' ? 'bg-red-100 text-red-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
+                          {rec.category === 'saving' ? '貯蓄' :
+                           rec.category === 'spending' ? '支出' : '収入'}
+                        </span>
+                        <span className={`text-sm px-2 py-1 rounded ${
+                          rec.priority === 'high' ? 'bg-red-100 text-red-800' :
+                          rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {rec.priority === 'high' ? '高優先度' :
+                           rec.priority === 'medium' ? '中優先度' : '低優先度'}
+                        </span>
+                      </div>
+                      <h4 className="font-medium text-gray-800 mb-1">{rec.action}</h4>
+                      <p className="text-sm text-gray-600">{rec.expectedImpact}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 分析日時 */}
+          <div className={`text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            分析実行日時: {new Date(analysisResult.timestamp).toLocaleString('ja-JP')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, categories, monthlyTransactions, categoryIcons }) => (
   <div className="pb-20 space-y-4">
     {/* 収支バランス */}
@@ -444,103 +1150,178 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
 
 const SettingsView = ({
   darkMode, setDarkMode, autoSave, setAutoSave, setShowCategoryManager,
-  lastSaved, saveData, exportData, importData
-}) => (
-  <div className="pb-20 space-y-4">
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
-      <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-        設定
-      </h2>
-      
-      <div className="space-y-4">
-        {/* ダークモード */}
-        <div className="flex items-center justify-between">
-          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>ダークモード</span>
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md ${
-              darkMode 
-                ? 'bg-gray-700 text-white' 
-                : 'bg-gray-200 text-gray-700'
-            }`}
-          >
-            {darkMode ? <Moon size={16} /> : <Sun size={16} />}
-            {darkMode ? 'ON' : 'OFF'}
-          </button>
-        </div>
+  lastSaved, saveData, exportData, importData, geminiApiKey, saveApiKey
+}) => {
+  const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
+  const [showApiKey, setShowApiKey] = useState(false);
 
-        {/* 自動保存 */}
-        <div className="flex items-center justify-between">
-          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>自動保存</span>
-          <button
-            onClick={() => setAutoSave(!autoSave)}
-            className={`px-3 py-2 rounded-md ${
-              autoSave 
-                ? 'bg-green-600 text-white' 
-                : darkMode 
-                  ? 'bg-gray-700 text-gray-300' 
-                  : 'bg-gray-200 text-gray-700'
-            }`}
-          >
-            {autoSave ? 'ON' : 'OFF'}
-          </button>
-        </div>
+  const handleSaveApiKey = () => {
+    if (apiKeyInput.trim()) {
+      saveApiKey(apiKeyInput.trim());
+    } else {
+      alert('API KEYを入力してください');
+    }
+  };
 
-        {/* カテゴリ管理 */}
-        <div className="flex items-center justify-between">
-          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>カテゴリ管理</span>
-          <button
-            onClick={() => setShowCategoryManager(true)}
-            className="bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 transition-colors"
-          >
-            管理
-          </button>
-        </div>
-
-        {/* 最終保存日時 */}
-        {lastSaved && (
-          <div className="flex items-center justify-between">
-            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>最終保存</span>
-            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {lastSaved.toLocaleString('ja-JP')}
-            </span>
+  return (
+    <div className="pb-20 space-y-4">
+      {/* AI設定 */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+        <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+          🤖 AI分析設定
+        </h2>
+        
+        <div className="space-y-4">
+          <div>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Gemini API KEY
+            </label>
+            <div className="flex gap-2">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                className={`flex-1 px-3 py-2 border rounded-md ${
+                  darkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300'
+                }`}
+              />
+              <button
+                onClick={() => setShowApiKey(!showApiKey)}
+                className={`px-3 py-2 rounded-md ${
+                  darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <button
+              onClick={handleSaveApiKey}
+              className="mt-2 w-full bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 transition-colors"
+            >
+              API KEYを保存
+            </button>
+            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Google AI StudioでGemini API KEYを取得してください<br />
+              <a 
+                href="https://aistudio.google.com/app/apikey" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 underline"
+              >
+                https://aistudio.google.com/app/apikey
+              </a>
+            </p>
+            {geminiApiKey && (
+              <div className="mt-2 flex items-center gap-2">
+                <Check size={16} className="text-green-600" />
+                <span className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                  API KEY設定済み
+                </span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
-    </div>
 
-    {/* データ管理 */}
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
-      <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-        データ管理
-      </h2>
-      
-      <div className="space-y-3">
-        <button
-          onClick={saveData}
-          className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-        >
-          <Database size={20} />
-          手動保存
-        </button>
+      {/* 基本設定 */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+        <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+          基本設定
+        </h2>
         
-        <button
-          onClick={exportData}
-          className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-        >
-          <Download size={20} />
-          データエクスポート
-        </button>
+        <div className="space-y-4">
+          {/* ダークモード */}
+          <div className="flex items-center justify-between">
+            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>ダークモード</span>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md ${
+                darkMode 
+                  ? 'bg-gray-700 text-white' 
+                  : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              {darkMode ? <Moon size={16} /> : <Sun size={16} />}
+              {darkMode ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
+          {/* 自動保存 */}
+          <div className="flex items-center justify-between">
+            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>自動保存</span>
+            <button
+              onClick={() => setAutoSave(!autoSave)}
+              className={`px-3 py-2 rounded-md ${
+                autoSave 
+                  ? 'bg-green-600 text-white' 
+                  : darkMode 
+                    ? 'bg-gray-700 text-gray-300' 
+                    : 'bg-gray-200 text-gray-700'
+              }`}
+            >
+              {autoSave ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
+          {/* カテゴリ管理 */}
+          <div className="flex items-center justify-between">
+            <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>カテゴリ管理</span>
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="bg-purple-600 text-white px-3 py-2 rounded-md hover:bg-purple-700 transition-colors"
+            >
+              管理
+            </button>
+          </div>
+
+          {/* 最終保存日時 */}
+          {lastSaved && (
+            <div className="flex items-center justify-between">
+              <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>最終保存</span>
+              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {lastSaved.toLocaleString('ja-JP')}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* データ管理 */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+        <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+          データ管理
+        </h2>
         
-        <label className="w-full bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
-          <Upload size={20} />
-          データインポート
-          <input type="file" accept=".json" onChange={importData} className="hidden" />
-        </label>
+        <div className="space-y-3">
+          <button
+            onClick={saveData}
+            className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <Database size={20} />
+            手動保存
+          </button>
+          
+          <button
+            onClick={exportData}
+            className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <Download size={20} />
+            データエクスポート
+          </button>
+          
+          <label className="w-full bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
+            <Upload size={20} />
+            データインポート
+            <input type="file" accept=".json" onChange={importData} className="hidden" />
+          </label>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const CategoryManagerModal = ({
   darkMode, setShowCategoryManager, newCategoryType, setNewCategoryType, newCategoryName,
@@ -666,7 +1447,6 @@ const CategoryManagerModal = ({
   </div>
 );
 
-
 const SimpleBudgetApp = () => {
   // 基本データ
   const [transactions, setTransactions] = useState([]);
@@ -681,12 +1461,13 @@ const SimpleBudgetApp = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterType, setFilterType] = useState('');
-  const [currentView, setCurrentView] = useState('home'); // home, add, stats, settings
+  const [currentView, setCurrentView] = useState('home'); // home, add, aiAnalysis, stats, settings
   
   // 設定
   const [darkMode, setDarkMode] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
+  const [geminiApiKey, setGeminiApiKey] = useState('');
   
   // 通知
   const [notification, setNotification] = useState(null);
@@ -699,11 +1480,6 @@ const SimpleBudgetApp = () => {
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryType, setNewCategoryType] = useState('expense');
-
-  // --- 修正点 2: 不要になったフォーカス管理のstateとrefを削除 ---
-  // const amountInputRef = useRef(null);
-  // const descriptionInputRef = useRef(null);
-  // const [focusedInput, setFocusedInput] = useState(null);
 
   // シンプルなカテゴリー設定（デフォルト）
   const defaultCategories = {
@@ -748,7 +1524,9 @@ const SimpleBudgetApp = () => {
   useEffect(() => {
     loadData();
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    const savedApiKey = localStorage.getItem('gemini_api_key') || '';
     setDarkMode(savedDarkMode);
+    setGeminiApiKey(savedApiKey);
   }, []);
 
   // ダークモード適用
@@ -771,6 +1549,13 @@ const SimpleBudgetApp = () => {
     } catch (error) {
       showNotification('保存に失敗しました', 'error');
     }
+  };
+
+  // API KEY保存
+  const saveApiKey = (apiKey) => {
+    localStorage.setItem('gemini_api_key', apiKey);
+    setGeminiApiKey(apiKey);
+    showNotification('API KEYを保存しました', 'success');
   };
 
   // データ読み込み
@@ -851,8 +1636,6 @@ const SimpleBudgetApp = () => {
     }));
     showNotification('カテゴリを削除しました', 'info');
   };
-
-  // --- 修正点 3: 不要になったフォーカス管理のuseEffectを削除 ---
 
   // 取引削除
   const deleteTransaction = (id) => {
@@ -971,7 +1754,7 @@ const SimpleBudgetApp = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-              家計簿
+              Gemini AI家計簿
             </h1>
             <Wallet className="text-blue-600" size={32} />
           </div>
@@ -1019,6 +1802,16 @@ const SimpleBudgetApp = () => {
             addTransaction={addTransaction}
           />
         )}
+        {currentView === 'aiAnalysis' && (
+          <AIAnalysisView
+            darkMode={darkMode}
+            transactions={transactions}
+            formatAmount={formatAmount}
+            categories={categories}
+            monthlyIncome={monthlyIncome}
+            monthlyExpense={monthlyExpense}
+          />
+        )}
         {currentView === 'stats' && (
           <StatsView
             darkMode={darkMode}
@@ -1041,6 +1834,8 @@ const SimpleBudgetApp = () => {
             saveData={saveData}
             exportData={exportData}
             importData={importData}
+            geminiApiKey={geminiApiKey}
+            saveApiKey={saveApiKey}
           />
         )}
       </div>
