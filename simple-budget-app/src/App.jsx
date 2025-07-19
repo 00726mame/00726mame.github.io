@@ -5,6 +5,119 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 // Colors for charts
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#d084d0', '#ffb347'];
 
+const CameraModal = ({ isOpen, onClose, onCapture }) => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+
+  // カメラを起動する処理
+  useEffect(() => {
+    if (isOpen) {
+      const startCamera = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' } // 背面カメラを優先
+          });
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          setStream(stream);
+        } catch (err) {
+          console.error("カメラの起動に失敗しました:", err);
+          alert("カメラの起動に失敗しました。ブラウザのカメラアクセス許可を確認してください。");
+          onClose();
+        }
+      };
+      startCamera();
+    }
+
+    // カメラを停止するクリーンアップ処理
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  // 撮影処理
+  const handleCapture = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+      const imageDataUrl = canvas.toDataURL('image/jpeg');
+      setCapturedImage(imageDataUrl);
+      // 撮影後はストリームを停止
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }
+  };
+
+  // 再撮影処理
+  const handleRetake = () => {
+    setCapturedImage(null);
+    // 再度カメラを起動
+    const startCamera = async () => {
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (videoRef.current) {
+          videoRef.current.srcObject = newStream;
+        }
+        setStream(newStream);
+      } catch (err) {
+        console.error("カメラの再起動に失敗しました:", err);
+      }
+    };
+    startCamera();
+  };
+
+  // 撮影した写真を使用する処理
+  const handleUsePhoto = () => {
+    onCapture(capturedImage);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center z-50">
+      <div className="relative w-full max-w-lg aspect-video">
+        {capturedImage ? (
+          <img src={capturedImage} alt="撮影したレシート" className="w-full h-full object-contain" />
+        ) : (
+          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
+        )}
+        <canvas ref={canvasRef} className="hidden"></canvas>
+      </div>
+
+      <div className="absolute bottom-8 flex items-center justify-center w-full space-x-8">
+        {capturedImage ? (
+          <>
+            <button onClick={handleRetake} className="p-4 bg-gray-700 rounded-full text-white">
+              <RefreshCcw size={28} />
+            </button>
+            <button onClick={handleUsePhoto} className="p-4 bg-blue-600 rounded-full text-white">
+              <Check size={40} />
+            </button>
+          </>
+        ) : (
+          <button onClick={handleCapture} className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-4 border-gray-400">
+            <Circle size={60} className="text-white fill-current" />
+          </button>
+        )}
+      </div>
+      <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full text-white">
+        <X size={24} />
+      </button>
+    </div>
+  );
+};
+
 const TransactionDetailModal = ({
   darkMode, transaction, onClose, onEdit, formatAmount, formatDate, categoryIcons
 }) => {
@@ -526,16 +639,14 @@ const NavigationBar = ({ darkMode, currentView, setCurrentView }) => (
 const AddView = ({
   darkMode, type, setType, amount, setAmount, category, setCategory,
   setShowCategoryManager, categories, details, setDetails, date, setDate, addTransaction,
-  geminiApiKey, showNotification // 親からGemini APIキーと通知関数を受け取る
+  geminiApiKey, showNotification
 }) => {
-  // --- レシート読み取り用のState ---
   const [isReadingReceipt, setIsReadingReceipt] = useState(false);
-  const fileInputRef = useRef(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
 
-  // --- レシート画像を処理する関数 ---
-  const handleReceiptUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+  // 撮影完了後の処理
+  const handleCaptureComplete = async (imageDataUrl) => {
+    if (!imageDataUrl) return;
 
     if (!geminiApiKey) {
       showNotification('レシート読み取り機能には、設定画面でのGemini API KEYの登録が必要です。', 'warning');
@@ -545,14 +656,9 @@ const AddView = ({
     setIsReadingReceipt(true);
 
     try {
-      // 画像をBase64に変換
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = async () => {
-        const base64Image = reader.result.split(',')[1];
+      const base64Image = imageDataUrl.split(',')[1];
 
-        // ★★★★★ 修正点：AIへの指示をより具体的に ★★★★★
-        const prompt = `このレシート画像から以下の情報を読み取り、JSON形式で出力してください。
+      const prompt = `このレシート画像から以下の情報を読み取り、JSON形式で出力してください。
 - 合計金額 (totalAmount)
 - 店名 (storeName)
 - 取引日 (transactionDate in YYYY-MM-DD format)
@@ -562,215 +668,172 @@ const AddView = ({
 【カテゴリリスト】: ${[...categories.income, ...categories.expense].join(', ')}
 `;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                { inline_data: { mime_type: file.type, data: base64Image } }
-              ]
-            }],
-            generation_config: { response_mime_type: "application/json" }
-          })
-        });
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+            ]
+          }],
+          generation_config: { response_mime_type: "application/json" }
+        })
+      });
 
-        if (!response.ok) throw new Error('レシートの解析に失敗しました。');
-        
-        const data = await response.json();
-        const receiptDataText = data.candidates[0].content.parts[0].text;
-        const receiptData = JSON.parse(receiptDataText);
+      if (!response.ok) throw new Error('レシートの解析に失敗しました。');
+      
+      const data = await response.json();
+      const receiptDataText = data.candidates[0].content.parts[0].text;
+      const receiptData = JSON.parse(receiptDataText);
 
-        // ★★★★★ 修正点：AIの判断結果をフォームに反映 ★★★★★
-        if (receiptData.totalAmount) setAmount(receiptData.totalAmount.toString());
-        if (receiptData.storeName) setDetails(receiptData.storeName);
-        if (receiptData.transactionDate) setDate(receiptData.transactionDate);
+      if (receiptData.totalAmount) setAmount(receiptData.totalAmount.toString());
+      if (receiptData.storeName) setDetails(receiptData.storeName);
+      if (receiptData.transactionDate) setDate(receiptData.transactionDate);
 
-        // AIが判断したタイプを適用
-        if (receiptData.type === 'income' || receiptData.type === 'expense') {
-          setType(receiptData.type);
-
-          // AIが判断したタイプに対応するカテゴリリストに、返ってきたカテゴリが存在するかチェック
-          if (receiptData.category && categories[receiptData.type].includes(receiptData.category)) {
-            setCategory(receiptData.category);
-          } else {
-            // 存在しない、または不適切な場合は「その他」にフォールバック
-            setCategory('その他');
-          }
+      if (receiptData.type === 'income' || receiptData.type === 'expense') {
+        setType(receiptData.type);
+        if (receiptData.category && categories[receiptData.type].includes(receiptData.category)) {
+          setCategory(receiptData.category);
+        } else {
+          setCategory('その他');
         }
+      }
 
-        showNotification('レシートから情報を読み取りました。内容を確認してください。', 'success');
-      };
+      showNotification('レシートから情報を読み取りました。内容を確認してください。', 'success');
     } catch (error) {
       console.error(error);
       showNotification('レシートの読み取り中にエラーが発生しました。', 'error');
     } finally {
       setIsReadingReceipt(false);
-      if(fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   return (
-    <div className="pb-20 relative">
-      {isReadingReceipt && (
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-10 rounded-lg">
-          <Loader size={48} className="text-white animate-spin" />
-          <p className="text-white mt-4">レシートを解析中...</p>
-        </div>
-      )}
-
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-            取引を追加
-          </h2>
-          <button
-            onClick={() => fileInputRef.current.click()}
-            className="bg-indigo-600 text-white py-2 px-3 rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-2"
-          >
-            <Camera size={16} />
-            <span>レシート読取</span>
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleReceiptUpload}
-            accept="image/*"
-            className="hidden"
-          />
-        </div>
-        
-        <div className="space-y-4">
-          <div className="flex gap-4">
-            <label className="flex items-center flex-1">
-              <input
-                type="radio"
-                value="income"
-                checked={type === 'income'}
-                onChange={(e) => {
-                  setType(e.target.value);
-                  setCategory('');
-                }}
-                className="mr-2"
-              />
-              <span className="text-green-600 font-semibold">収入</span>
-            </label>
-            <label className="flex items-center flex-1">
-              <input
-                type="radio"
-                value="expense"
-                checked={type === 'expense'}
-                onChange={(e) => {
-                  setType(e.target.value);
-                  setCategory('');
-                }}
-                className="mr-2"
-              />
-              <span className="text-red-600 font-semibold">支出</span>
-            </label>
+    <>
+      <CameraModal
+        isOpen={showCameraModal}
+        onClose={() => setShowCameraModal(false)}
+        onCapture={handleCaptureComplete}
+      />
+      <div className="pb-20 relative">
+        {isReadingReceipt && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-10 rounded-lg">
+            <Loader size={48} className="text-white animate-spin" />
+            <p className="text-white mt-4">レシートを解析中...</p>
           </div>
+        )}
 
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              金額
-            </label>
-            <input
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="金額を入力"
-              className={`w-full px-3 py-3 border rounded-md text-lg ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-              autoComplete="off"
-            />
-          </div>
-
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              カテゴリー
-            </label>
-            <select
-              value={category}
-              onChange={(e) => {
-                if (e.target.value === '__ADD_NEW__') {
-                  setShowCategoryManager(true);
-                } else {
-                  setCategory(e.target.value);
-                }
-              }}
-              className={`w-full px-3 py-3 border rounded-md ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+              取引を追加
+            </h2>
+            <button
+              onClick={() => setShowCameraModal(true)}
+              className="bg-indigo-600 text-white py-2 px-3 rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-2"
             >
-              <option value="">カテゴリーを選択</option>
-              {categories[type].map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-              <option value="__ADD_NEW__" className="text-blue-600 font-medium">
-                + 新しいカテゴリを追加
-              </option>
-            </select>
+              <Camera size={16} />
+              <span>カメラで読取</span>
+            </button>
           </div>
+          
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <label className="flex items-center flex-1">
+                <input
+                  type="radio"
+                  value="income"
+                  checked={type === 'income'}
+                  onChange={(e) => { setType(e.target.value); setCategory(''); }}
+                  className="mr-2"
+                />
+                <span className="text-green-600 font-semibold">収入</span>
+              </label>
+              <label className="flex items-center flex-1">
+                <input
+                  type="radio"
+                  value="expense"
+                  checked={type === 'expense'}
+                  onChange={(e) => { setType(e.target.value); setCategory(''); }}
+                  className="mr-2"
+                />
+                <span className="text-red-600 font-semibold">支出</span>
+              </label>
+            </div>
 
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              詳細
-            </label>
-            <textarea
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              placeholder="詳細を入力
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>金額</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="金額を入力"
+                className={`w-full px-3 py-3 border rounded-md text-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>カテゴリー</label>
+              <select
+                value={category}
+                onChange={(e) => {
+                  if (e.target.value === '__ADD_NEW__') {
+                    setShowCategoryManager(true);
+                  } else {
+                    setCategory(e.target.value);
+                  }
+                }}
+                className={`w-full px-3 py-3 border rounded-md ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+              >
+                <option value="">カテゴリーを選択</option>
+                {categories[type].map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                <option value="__ADD_NEW__" className="text-blue-600 font-medium">➕ 新しいカテゴリを追加</option>
+              </select>
+            </div>
+
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>詳細</label>
+              <textarea
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                placeholder="詳細を入力
 例：
 ・商品名
 ・購入場所
 ・メモ"
-              rows={4}
-              className={`w-full px-3 py-3 border rounded-md resize-none ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-              autoComplete="off"
-            />
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              買ったものの詳細、場所、メモなどを自由に記入できます
-            </p>
-          </div>
+                rows={4}
+                className={`w-full px-3 py-3 border rounded-md resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                autoComplete="off"
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>買ったものの詳細、場所、メモなどを自由に記入できます</p>
+            </div>
 
-          <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              日付
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className={`w-full px-3 py-3 border rounded-md ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300'
-              }`}
-            />
-          </div>
+            <div>
+              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>日付</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={`w-full px-3 py-3 border rounded-md ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+              />
+            </div>
 
-          <button
-            onClick={addTransaction}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-lg font-semibold"
-          >
-            <Check size={20} />
-            取引を追加
-          </button>
+            <button
+              onClick={addTransaction}
+              className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-lg font-semibold"
+            >
+              <Check size={20} />
+              取引を追加
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 
