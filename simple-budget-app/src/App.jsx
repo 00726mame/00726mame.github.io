@@ -1334,7 +1334,8 @@ const NavigationBar = ({ darkMode, currentView, setCurrentView }) => (
                         />
                         <YAxis tick={{ fontSize: 12 }} />
                         <Tooltip
-                          formatter={(value, name) => [formatAmount(value), name === 'income' ? '収入' : name === 'expense' ? '支出' : '収支']}
+                          // ★渡されるnameはすでに日本語なので、そのまま表示する
+                          formatter={(value, name) => [formatAmount(value), name]}
                           labelFormatter={(label) => `${label}月`}
                         />
                         <Legend />
