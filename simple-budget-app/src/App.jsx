@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, Calendar, Download, Upload, Settings, BarChart3, Filter, Search, RefreshCw, Database, Eye, EyeOff, Menu, X, Check, Info, AlertCircle, Trash2, Edit3, Home, Car, Utensils, ShoppingCart, Heart, Briefcase, GraduationCap, Plane, Coffee, Gift, Music, Smartphone, Gamepad2, Sun, Moon, Brain, Loader, ChevronDown, ChevronUp, Camera } from 'lucide-react';
+import { PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, Calendar, Download, Upload, Settings, BarChart3, Filter, Search, RefreshCw, RefreshCcw , Database, Eye, EyeOff, Menu, X, Check, Info, AlertCircle, Trash2, Edit3, Home, Car, Utensils, ShoppingCart, Heart, Briefcase, GraduationCap, Plane, Coffee, Gift, Music, Smartphone, Gamepad2, Sun, Moon, Brain, Loader, ChevronDown, ChevronUp, Camera, Circle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 // Colors for charts
