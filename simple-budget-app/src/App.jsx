@@ -398,7 +398,7 @@ const AddView = ({
   </div>
 );
 
-const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, monthlyIncome, monthlyExpense }) => {
+const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, monthlyIncome, monthlyExpense, geminiApiKey, showNotification }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
@@ -440,25 +440,70 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
     if (transactions.length === 0) return null;
 
     const now = new Date();
-    const currentMonth = now.toISOString().slice(0, 7);
+    const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1).toISOString().slice(0, 7);
-    const last3Months = new Date(now.getFullYear(), now.getMonth() - 3).toISOString().slice(0, 7);
+    const last3Months = new Date(now.getFullYear(), now.getMonth() - 2).toISOString().slice(0, 7);
 
+    // 月別データ集計
     const monthlyData = {};
+    // カテゴリ別データ集計
     const categoryData = {};
+    
+    // 全期間のカテゴリ別支出を計算
+    const categoryExpenseData = {};
+    let totalExpense = 0;
 
     transactions.forEach(t => {
       const month = t.date.slice(0, 7);
+      
+      // 月別データ
       if (!monthlyData[month]) {
-        monthlyData[month] = { income: 0, expense: 0 };
+        monthlyData[month] = { income: 0, expense: 0, count: 0 };
       }
       monthlyData[month][t.type] += t.amount;
+      monthlyData[month].count += 1;
 
+      // カテゴリ別データ（全期間）
       if (!categoryData[t.category]) {
-        categoryData[t.category] = { income: 0, expense: 0, count: 0 };
+        categoryData[t.category] = { 
+          income: 0, 
+          expense: 0, 
+          count: 0,
+          type: t.type === 'income' ? 'income' : 'expense'
+        };
       }
       categoryData[t.category][t.type] += t.amount;
       categoryData[t.category].count += 1;
+
+      // 支出カテゴリ別集計（グラフ用）
+      if (t.type === 'expense') {
+        if (!categoryExpenseData[t.category]) {
+          categoryExpenseData[t.category] = 0;
+        }
+        categoryExpenseData[t.category] += t.amount;
+        totalExpense += t.amount;
+      }
+    });
+
+    // 現在月のデータ
+    const currentMonthData = monthlyData[currentMonth] || { income: 0, expense: 0, count: 0 };
+    
+    // カテゴリー別支出の割合計算
+    const categoryBreakdown = Object.keys(categoryExpenseData)
+      .map(category => ({
+        category,
+        amount: categoryExpenseData[category],
+        percentage: totalExpense > 0 ? Math.round((categoryExpenseData[category] / totalExpense) * 100) : 0
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 8); // 上位8カテゴリ
+
+    console.log('分析データ準備完了:', {
+      currentMonth,
+      currentMonthData,
+      categoryBreakdown,
+      totalExpense,
+      monthlyDataKeys: Object.keys(monthlyData)
     });
 
     return {
@@ -468,90 +513,115 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
       last3Months,
       monthlyData,
       categoryData,
-      transactions: transactions.slice(0, 50) // 最新50件を分析対象とする
+      categoryExpenseData,
+      categoryBreakdown,
+      currentMonthIncome: currentMonthData.income,
+      currentMonthExpense: currentMonthData.expense,
+      totalExpense,
+      recentTransactions: transactions.slice(0, 20) // 最新20件
     };
   };
 
   // AI分析実行
   const runAIAnalysis = async () => {
-    console.log('AI分析開始');
+    console.log('=== AI分析開始 ===');
     console.log('取引データ数:', transactions.length);
+    console.log('今月収入:', monthlyIncome);
+    console.log('今月支出:', monthlyExpense);
     
     // API KEYチェック
     if (!geminiApiKey.trim()) {
-      alert('Gemini API KEYが設定されていません。設定画面でAPI KEYを入力してください。');
+      showNotification('Gemini API KEYが設定されていません。設定画面でAPI KEYを入力してください。', 'warning');
       return;
     }
     
     const analysisData = prepareAnalysisData();
     if (!analysisData) {
-      alert('分析するデータがありません。取引を追加してから再実行してください。');
+      showNotification('分析するデータがありません。取引を追加してから再実行してください。', 'warning');
       return;
     }
 
-    console.log('分析データ:', analysisData);
+    console.log('=== 分析データ詳細 ===');
+    console.log('現在月:', analysisData.currentMonth);
+    console.log('今月収入:', analysisData.currentMonthIncome);
+    console.log('今月支出:', analysisData.currentMonthExpense);
+    console.log('カテゴリー別支出内訳:', analysisData.categoryBreakdown);
+    console.log('月次データ:', analysisData.monthlyData);
+
     setIsAnalyzing(true);
     
     try {
       // Gemini API用のプロンプト
       const prompt = `
-あなたは家計簿データの専門分析アナリストです。以下の家計簿データを詳細に分析し、構造化されたJSONで回答してください。
+家計簿データを分析して、以下のJSON形式で結果を返してください。JSONのみを出力してください。
 
-データ概要:
-- 総取引数: ${analysisData.totalTransactions}
-- 月次データ: ${JSON.stringify(analysisData.monthlyData)}
+## 分析データ:
+- 現在月: ${analysisData.currentMonth}
+- 総取引数: ${analysisData.totalTransactions}件
+- 今月の収入: ${analysisData.currentMonthIncome}円
+- 今月の支出: ${analysisData.currentMonthExpense}円
+- カテゴリ別支出内訳: ${JSON.stringify(analysisData.categoryBreakdown)}
 
-以下のJSON構造で必ず回答してください。他のテキストは一切含めず、JSONのみを出力してください：
+## 月次推移データ:
+${Object.keys(analysisData.monthlyData).slice(-6).map(month => 
+  `${month}: 収入${analysisData.monthlyData[month].income}円, 支出${analysisData.monthlyData[month].expense}円`
+).join('\n')}
 
+## 返すJSON形式:
 {
   "overview": {
     "title": "家計状況の総合評価",
-    "summary": "現在の家計状況の2-3行の評価",
-    "score": 75,
+    "summary": "現在の家計状況を具体的に2-3行で評価",
+    "score": 70,
     "trend": "stable"
   },
   "predictions": {
     "nextMonth": {
-      "income": 250000,
-      "expense": 200000,
+      "income": ${analysisData.currentMonthIncome || 200000},
+      "expense": ${analysisData.currentMonthExpense || 180000},
       "confidence": "medium"
     },
     "threeMonth": {
-      "totalSavings": 150000,
-      "riskFactors": ["季節変動による支出増加", "収入の不安定性"]
+      "totalSavings": ${(analysisData.currentMonthIncome - analysisData.currentMonthExpense) * 3 || 60000},
+      "riskFactors": ["具体的なリスク要因1", "具体的なリスク要因2"]
     }
   },
   "insights": [
     {
       "type": "pattern",
-      "title": "インサイトのタイトル",
-      "description": "詳細な説明",
+      "title": "支出パターンの分析",
+      "description": "データに基づく具体的な分析内容",
       "impact": "medium"
     }
   ],
   "recommendations": [
     {
       "category": "saving",
-      "action": "具体的なアクション",
-      "expectedImpact": "期待される効果",
+      "action": "データに基づく具体的な改善提案",
+      "expectedImpact": "期待される具体的な効果",
       "priority": "high"
     }
   ],
   "chartData": {
     "monthlyTrend": [
-      {"month": "今月", "income": 250000, "expense": 200000, "balance": 50000}
+${Object.keys(analysisData.monthlyData).slice(-6).map(month => 
+  `      {"month": "${month.slice(5)}", "income": ${analysisData.monthlyData[month].income}, "expense": ${analysisData.monthlyData[month].expense}, "balance": ${analysisData.monthlyData[month].income - analysisData.monthlyData[month].expense}}`
+).join(',\n')}
     ],
     "categoryBreakdown": [
-      {"category": "食費", "amount": 50000, "percentage": 25}
+${analysisData.categoryBreakdown.map(cat => 
+  `      {"category": "${cat.category}", "amount": ${cat.amount}, "percentage": ${cat.percentage}}`
+).join(',\n')}
     ]
   }
 }
-`;
 
-      console.log('Gemini APIリクエスト送信中...');
+JSONのみを返してください:`;
+
+      console.log('Gemini 2.0 Flash APIリクエスト送信中...');
       
       // Gemini API呼び出し
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -563,9 +633,28 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
             }]
           }],
           generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048
-          }
+            temperature: 0.3,
+            maxOutputTokens: 4096,
+            candidateCount: 1
+          },
+          safetySettings: [
+            {
+              category: "HARM_CATEGORY_HARASSMENT",
+              threshold: "BLOCK_NONE"
+            },
+            {
+              category: "HARM_CATEGORY_HATE_SPEECH", 
+              threshold: "BLOCK_NONE"
+            },
+            {
+              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              threshold: "BLOCK_NONE"
+            },
+            {
+              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+              threshold: "BLOCK_NONE"
+            }
+          ]
         })
       });
 
@@ -576,14 +665,28 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
         console.error('APIエラー詳細:', errorText);
         
         if (response.status === 400) {
-          throw new Error('API KEYが無効です。設定画面で正しいGemini API KEYを入力してください。');
+          const errorData = await response.json();
+          console.error('API 400エラー詳細:', errorData);
+          if (errorData.error && errorData.error.message.includes('API_KEY_INVALID')) {
+            throw new Error('API KEYが無効です。設定画面で正しいGemini API KEYを入力してください。');
+          } else {
+            throw new Error(`リクエストエラー: ${errorData.error?.message || 'API KEYまたはリクエスト形式を確認してください'}`);
+          }
+        } else if (response.status === 403) {
+          throw new Error('API KEYの権限が不足しています。Gemini APIが有効になっているか確認してください。');
         } else {
-          throw new Error(`AI分析リクエストが失敗しました: ${response.status} - ${errorText}`);
+          throw new Error(`AI分析リクエストが失敗しました: ${response.status}`);
         }
       }
 
       const data = await response.json();
       console.log('APIレスポンスデータ:', data);
+      
+      // Gemini APIのレスポンス構造に対応
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+        console.error('予期しないAPIレスポンス構造:', data);
+        throw new Error('APIレスポンスの形式が予期されたものと異なります');
+      }
       
       let responseText = data.candidates[0].content.parts[0].text;
       console.log('レスポンステキスト:', responseText);
@@ -603,18 +706,18 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
         analysisDataResult = {
           overview: {
             title: "家計状況の分析結果",
-            summary: `${analysisData.totalTransactions}件の取引データを分析しました。継続的な家計管理を心がけましょう。`,
+            summary: `${analysisData.totalTransactions}件の取引データを分析しました。今月の収支は${formatAmount(analysisData.currentMonthIncome - analysisData.currentMonthExpense)}です。`,
             score: 70,
             trend: "stable"
           },
           predictions: {
             nextMonth: {
-              income: Math.round(Object.values(analysisData.monthlyData).reduce((sum, month) => sum + month.income, 0) / Object.keys(analysisData.monthlyData).length) || 200000,
-              expense: Math.round(Object.values(analysisData.monthlyData).reduce((sum, month) => sum + month.expense, 0) / Object.keys(analysisData.monthlyData).length) || 180000,
+              income: analysisData.currentMonthIncome || 200000,
+              expense: analysisData.currentMonthExpense || 180000,
               confidence: "medium"
             },
             threeMonth: {
-              totalSavings: 60000,
+              totalSavings: (analysisData.currentMonthIncome - analysisData.currentMonthExpense) * 3 || 60000,
               riskFactors: ["支出の増加傾向", "季節的な変動"]
             }
           },
@@ -622,36 +725,32 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
             {
               type: "pattern",
               title: "支出パターンの安定性",
-              description: "毎月の支出が比較的安定しています。このペースを維持しましょう。",
+              description: `今月の支出は${formatAmount(analysisData.currentMonthExpense)}で、継続的な管理ができています。`,
               impact: "medium"
             }
           ],
           recommendations: [
             {
               category: "saving",
-              action: "月間予算の設定",
-              expectedImpact: "月1万円の節約が期待できます",
+              action: "月間予算の設定と追跡",
+              expectedImpact: "支出管理の改善により月1万円の節約が期待できます",
               priority: "high"
             },
             {
               category: "spending",
-              action: "カテゴリ別支出の見直し",
-              expectedImpact: "支出の最適化により月5千円の節約",
+              action: "最大支出カテゴリの見直し",
+              expectedImpact: `${analysisData.categoryBreakdown[0]?.category || '主要カテゴリ'}の最適化`,
               priority: "medium"
             }
           ],
           chartData: {
             monthlyTrend: Object.keys(analysisData.monthlyData).slice(-6).map(month => ({
-              month: month.slice(5),
+              month: month.slice(5), // MM形式
               income: analysisData.monthlyData[month].income,
               expense: analysisData.monthlyData[month].expense,
               balance: analysisData.monthlyData[month].income - analysisData.monthlyData[month].expense
             })),
-            categoryBreakdown: Object.keys(analysisData.categoryData).slice(0, 6).map((category, index) => ({
-              category,
-              amount: analysisData.categoryData[category].expense,
-              percentage: Math.round((analysisData.categoryData[category].expense / Object.values(analysisData.categoryData).reduce((sum, cat) => sum + cat.expense, 0)) * 100)
-            }))
+            categoryBreakdown: analysisData.categoryBreakdown.slice(0, 6)
           }
         };
       }
@@ -665,6 +764,7 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
 
       setAnalysisResult(analysisWithTimestamp);
       saveAnalysisHistory(analysisWithTimestamp);
+      showNotification('AI分析が完了しました！', 'success');
       
       console.log('分析完了:', analysisWithTimestamp);
 
@@ -681,7 +781,7 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
       const fallbackAnalysis = {
         overview: {
           title: "基本分析結果",
-          summary: `${transactions.length}件の取引データから基本的な分析を行いました。詳細分析は後ほど再試行してください。`,
+          summary: `${transactions.length}件の取引データから基本的な分析を行いました。今月の収支：${formatAmount(monthlyIncome - monthlyExpense)}`,
           score: 65,
           trend: "stable"
         },
@@ -693,21 +793,21 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
           },
           threeMonth: {
             totalSavings: (monthlyIncome - monthlyExpense) * 3 || 60000,
-            riskFactors: ["データ不足による予測精度の低下"]
+            riskFactors: ["データ不足による予測精度の低下", "APIアクセスの問題"]
           }
         },
         insights: [
           {
             type: "trend",
-            title: "データ蓄積期間",
-            description: "より正確な分析のため、継続的なデータ入力をお勧めします。",
+            title: "基本的な収支状況",
+            description: `今月の収入${formatAmount(monthlyIncome)}、支出${formatAmount(monthlyExpense)}を記録しています。`,
             impact: "medium"
           }
         ],
         recommendations: [
           {
             category: "saving",
-            action: "定期的な家計の記録",
+            action: "定期的な家計の記録と分析",
             expectedImpact: "分析精度の向上と家計管理の改善",
             priority: "high"
           }
@@ -715,17 +815,23 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
         chartData: {
           monthlyTrend: [
             {
-              month: "今月",
+              month: new Date().toISOString().slice(5, 7), // 今月のMM
               income: monthlyIncome,
               expense: monthlyExpense,
               balance: monthlyIncome - monthlyExpense
             }
           ],
-          categoryBreakdown: categories.expense.slice(0, 4).map((category, index) => ({
-            category,
-            amount: 30000 + index * 10000,
-            percentage: 20 + index * 5
-          }))
+          categoryBreakdown: categories.expense.slice(0, 4).map((category, index) => {
+            // 実際のカテゴリ別支出を計算
+            const categoryAmount = transactions
+              .filter(t => t.type === 'expense' && t.category === category && t.date.startsWith(new Date().toISOString().slice(0, 7)))
+              .reduce((sum, t) => sum + t.amount, 0);
+            return {
+              category,
+              amount: categoryAmount || (30000 + index * 10000),
+              percentage: monthlyExpense > 0 ? Math.round((categoryAmount / monthlyExpense) * 100) : (20 + index * 5)
+            };
+          })
         },
         timestamp: new Date().toISOString(),
         id: Date.now()
@@ -734,7 +840,7 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
       setAnalysisResult(fallbackAnalysis);
       saveAnalysisHistory(fallbackAnalysis);
       
-      showNotification('基本分析を表示しました。詳細分析は再試行してください。', 'warning');
+      showNotification('基本分析を表示しました。API接続の問題により詳細分析は利用できませんでした。', 'warning');
     } finally {
       setIsAnalyzing(false);
     }
@@ -790,12 +896,12 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
           {isAnalyzing ? (
             <>
               <Loader size={20} className="animate-spin" />
-              分析中...
+              Gemini AIで分析中...
             </>
           ) : (
             <>
               <Brain size={20} />
-              AI分析を実行
+              Gemini AI分析を実行
             </>
           )}
         </button>
@@ -942,13 +1048,20 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={analysisResult.chartData.monthlyTrend}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => formatAmount(value)} />
+                      <XAxis 
+                        dataKey="month" 
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(value) => `${value}月`}
+                      />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip 
+                        formatter={(value, name) => [formatAmount(value), name === 'income' ? '収入' : name === 'expense' ? '支出' : '収支']}
+                        labelFormatter={(label) => `${label}月`}
+                      />
                       <Legend />
-                      <Line type="monotone" dataKey="income" stroke="#10b981" name="収入" />
-                      <Line type="monotone" dataKey="expense" stroke="#ef4444" name="支出" />
-                      <Line type="monotone" dataKey="balance" stroke="#3b82f6" name="収支" />
+                      <Line type="monotone" dataKey="income" stroke="#10b981" name="収入" strokeWidth={2} />
+                      <Line type="monotone" dataKey="expense" stroke="#ef4444" name="支出" strokeWidth={2} />
+                      <Line type="monotone" dataKey="balance" stroke="#3b82f6" name="収支" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -967,7 +1080,7 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ category, percentage }) => `${category} ${percentage}%`}
+                        label={({ category, percentage }) => `${category}\n${percentage}%`}
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="amount"
@@ -976,7 +1089,10 @@ const AIAnalysisView = ({ darkMode, transactions, formatAmount, categories, mont
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => formatAmount(value)} />
+                      <Tooltip 
+                        formatter={(value, name) => [formatAmount(value), 'カテゴリ別支出']}
+                        labelFormatter={(label) => `${label}`}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1150,7 +1266,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
 
 const SettingsView = ({
   darkMode, setDarkMode, autoSave, setAutoSave, setShowCategoryManager,
-  lastSaved, saveData, exportData, importData, geminiApiKey, saveApiKey
+  lastSaved, saveData, exportData, importData, geminiApiKey, saveApiKey, showNotification
 }) => {
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -1159,7 +1275,7 @@ const SettingsView = ({
     if (apiKeyInput.trim()) {
       saveApiKey(apiKeyInput.trim());
     } else {
-      alert('API KEYを入力してください');
+      showNotification('API KEYを入力してください', 'warning');
     }
   };
 
@@ -1810,6 +1926,8 @@ const SimpleBudgetApp = () => {
             categories={categories}
             monthlyIncome={monthlyIncome}
             monthlyExpense={monthlyExpense}
+            geminiApiKey={geminiApiKey}
+            showNotification={showNotification}
           />
         )}
         {currentView === 'stats' && (
@@ -1836,6 +1954,7 @@ const SimpleBudgetApp = () => {
             importData={importData}
             geminiApiKey={geminiApiKey}
             saveApiKey={saveApiKey}
+            showNotification={showNotification}
           />
         )}
       </div>
