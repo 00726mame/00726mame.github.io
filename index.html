@@ -4,9 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Household Finance Apps</title>
-    <script type="module" crossorigin src="/assets/index-Oc4nkwjb.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Z1XQJAmd.css">
+    <title>Vite + React</title>
+
+    <!-- ★★★ ここに以下のスクリプトを追加 ★★★ -->
+    <script>
+      (function(){
+        var redirect = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        if (redirect && redirect != location.href) {
+          history.replaceState(null, null, redirect);
+        }
+      })();
+    </script>
+    <!-- ★★★ 追加はここまで ★★★ -->
+
+    <script type="module" crossorigin src="/assets/index-BVykT1m3.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Dm2FhfV4.css">
   </head>
   <body>
     <div id="root"></div>
