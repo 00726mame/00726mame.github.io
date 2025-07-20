@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Household Finance Apps</title>
+    <script>
+        // GitHub Pages SPA用のリダイレクト処理
+        // この処理により、直接URLアクセス時でもReact Routerが正しく動作します
+        (function() {
+            var redirect = sessionStorage.redirect;
+            delete sessionStorage.redirect;
+            if (redirect && redirect != location.href) {
+                history.replaceState(null, null, redirect);
+            }
+        })();
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/household_accounting/assets/index.js"></script>
+    <script>
+        // GitHub Pages SPA用のフォールバック処理
+        if (location.pathname !== '/household_accounting/') {
+            sessionStorage.redirect = location.href;
+            location.replace('/household_accounting/');
+        }
+    </script>
+</body>
+</html>
