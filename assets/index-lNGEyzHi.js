@@ -607,7 +607,9 @@ ${Mt}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"><\/script>
 <script>
-  const map = L.map('map');
+  // ★★★ 修正点: 地図の初期表示を必ず行う ★★★
+  const map = L.map('map').setView([${ee[0].coords.lat}, ${ee[0].coords.lng}], 13);
+  
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
 
   const waypoints = [${Ae.join(`,
