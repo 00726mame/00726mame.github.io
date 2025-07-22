@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, MapPin, Settings, Plus, Edit, Trash2, Save, X, Zap, Target, AlertCircle, CheckCircle, Cloud, Navigation, Search, Map, Home, Car, Train, DollarSign, Brain } from 'lucide-react';
+import {
+  Calendar, Clock, MapPin, Settings, Plus, Trash2, X, Zap, Target,
+  AlertCircle, Cloud, Navigation, Map, Home, Car, Train, Footprints,
+  DollarSign, Brain, Sun, Info, Frown, Smile, MapPinned, Flag, ShieldCheck, Route
+} from 'lucide-react';
 
-// マップ表示用のモーダルコンポーネント
+// 地図表示用のモーダルコンポーネント (変更なし)
 const MapModal = ({ isOpen, onClose, url, title }) => {
-  // Blob URLのクリーンアップ
   useEffect(() => {
     return () => {
       if (url && url.startsWith('blob:')) {
@@ -16,7 +19,7 @@ const MapModal = ({ isOpen, onClose, url, title }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={(e) => { e.stopPropagation(); onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 flex justify-between items-center border-b dark:border-gray-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
@@ -40,76 +43,67 @@ const MapModal = ({ isOpen, onClose, url, title }) => {
   );
 };
 
+
 const SmartPlannerAI = () => {
   const navigate = useNavigate();
-  const [apiKeys, setApiKeys] = useState({
-    gemini: '',
-    tavily: '',
-    yolp: ''
-  });
+  const [apiKeys, setApiKeys] = useState({ gemini: '', tavily: '' });
   const [showSettings, setShowSettings] = useState(false);
   const [plans, setPlans] = useState([]);
+  const [startLocation, setStartLocation] = useState('');
+  const [destination, setDestination] = useState('');
   const [newPlanText, setNewPlanText] = useState('');
-  const [location, setLocation] = useState('');
   const [planDate, setPlanDate] = useState('');
   const [planTime, setPlanTime] = useState('09:00');
+  const [transportMode, setTransportMode] = useState('auto');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStatus, setGeneratingStatus] = useState('');
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [weatherData, setWeatherData] = useState(null);
-  const [hourlyWeatherData, setHourlyWeatherData] = useState(null);
   const [notification, setNotification] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapUrl, setMapUrl] = useState('');
   const [mapTitle, setMapTitle] = useState('');
-  const [retryCount, setRetryCount] = useState(0);
 
-  // コンポーネントマウント時の初期化
   useEffect(() => {
     loadSettings();
     loadPlans();
     initializeDarkMode();
-    // デフォルトの日付を今日に設定
     setPlanDate(new Date().toISOString().split('T')[0]);
   }, []);
 
-  // ========== 設定・データ管理 ==========
   const loadSettings = () => {
     try {
       const saved = localStorage.getItem('smart-planner-settings');
       if (saved) setApiKeys(prev => ({ ...prev, ...JSON.parse(saved) }));
-    } catch (error) { console.error('設定の読み込みに失敗:', error); }
+    } catch (_error) { console.error('設定の読み込みに失敗:', _error); }
   };
 
   const saveSettings = () => {
     const gemini = document.getElementById('gemini-api-key')?.value.trim() || '';
     const tavily = document.getElementById('tavily-api-key')?.value.trim() || '';
-    const yolp = document.getElementById('yolp-api-key')?.value.trim() || '';
-    const newApiKeys = { gemini, tavily, yolp };
+    const newApiKeys = { gemini, tavily };
     setApiKeys(newApiKeys);
     try {
       localStorage.setItem('smart-planner-settings', JSON.stringify(newApiKeys));
       showNotification('設定を保存しました', 'success');
       setShowSettings(false);
-    } catch (error) { showNotification('設定の保存に失敗しました', 'error'); }
+    } catch (_error) { showNotification('設定の保存に失敗しました', 'error'); }
   };
 
   const loadPlans = () => {
     try {
       const saved = localStorage.getItem('smart-planner-plans');
       if (saved) setPlans(JSON.parse(saved));
-    } catch (error) { console.error('プランの読み込みに失敗:', error); }
+    } catch (_error) { console.error('プランの読み込みに失敗:', _error); }
   };
 
   const savePlans = (newPlans) => {
     try {
       localStorage.setItem('smart-planner-plans', JSON.stringify(newPlans));
-    } catch (error) { console.error('プランの保存に失敗:', error); }
+    } catch (_error) { console.error('プランの保存に失敗:', _error); }
   };
 
   const deletePlan = (planId) => {
-    if (confirm('このプランを削除しますか？')) {
+    if (window.confirm('このプランを削除しますか？')) {
       const updatedPlans = plans.filter(p => p.id !== planId);
       setPlans(updatedPlans);
       savePlans(updatedPlans);
@@ -117,242 +111,199 @@ const SmartPlannerAI = () => {
     }
   };
 
-  // ========== 位置情報・天気情報 ==========
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
-      showNotification('位置情報がサポートされていません', 'error');
-      return;
+      showNotification('位置情報がサポートされていません', 'error'); return;
     }
+    setGeneratingStatus("現在地を取得中...");
     try {
       const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 });
       });
       const { latitude, longitude } = position.coords;
-      const coords = { lat: latitude, lng: longitude };
-      setCurrentLocation(coords);
-      
-      // OpenStreetMap Nominatim APIを使用（CORSフリー）
-      const address = await reverseGeocodeWithOSM(coords.lat, coords.lng);
+      const address = await reverseGeocodeWithOSM(latitude, longitude);
       if (address) {
-        setLocation(address);
-        showNotification('現在地を取得しました', 'success');
+        setStartLocation(address);
+        showNotification('出発地に現在地を設定しました', 'success');
+      } else {
+        showNotification('現在地の住所を特定できませんでした。', 'warning');
       }
-    } catch (error) { 
-      showNotification('位置情報の取得に失敗しました', 'error');
-      console.error('位置情報エラー:', error);
+    } catch (_error) {
+      showNotification('位置情報の取得に失敗しました', 'error'); console.error('位置情報エラー:', _error);
+    } finally {
+      setGeneratingStatus("");
     }
   };
 
-  // 時間帯の最も一般的な天気を取得
-  const getMostCommonWeather = (weatherArray) => {
-    if (!weatherArray || weatherArray.length === 0) return '不明';
-    const weatherCounts = {};
-    weatherArray.forEach(w => {
-      weatherCounts[w.weatherDescription] = (weatherCounts[w.weatherDescription] || 0) + 1;
-    });
-    return Object.entries(weatherCounts).sort((a, b) => b[1] - a[1])[0][0];
-  };
   const reverseGeocodeWithOSM = async (lat, lng) => {
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=ja`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=17&accept-language=ja`);
+      if (!response.ok) throw new Error(`Nominatim API Error: ${response.status}`);
       const data = await response.json();
-      return data.display_name || null;
-    } catch (error) {
-      console.error('OSM逆ジオコーディングエラー:', error);
+      return data.address.province + data.address.county + data.address.town || null;
+    } catch (_error) {
+      console.error('OSM逆ジオコーディングエラー:', _error);
       return null;
     }
   };
 
-  // OpenStreetMap Nominatim APIを使用したジオコーディング（CORSフリー）
   const geocodeWithOSM = async (location) => {
+    if (!location) return null;
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&limit=1&accept-language=ja`);
+      const response = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(location)}`);
+      if (!response.ok) throw new Error(`国土地理院APIサーバーエラー: ${response.status}`);
       const data = await response.json();
       if (data && data.length > 0) {
-        return {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon)
-        };
+        const firstHit = data[0];
+        const [lng, lat] = firstHit.geometry.coordinates;
+        return { lat, lng };
       }
       return null;
-    } catch (error) {
-      console.error('OSMジオコーディングエラー:', error);
+    } catch (_error) {
+      console.error('国土地理院 ジオコーディングエラー:', _error);
       return null;
     }
   };
   
-  // YOLP API関連の関数を修正（エラーハンドリング強化）
-  const reverseGeocode = async (lat, lng) => {
-    // まずOSMで試行
-    const osmResult = await reverseGeocodeWithOSM(lat, lng);
-    if (osmResult) return osmResult;
-    
-    // YOLP APIは使用しない（CORS制限のため）
-    showNotification('YOLP APIはブラウザから直接使用できません。代替APIを使用しています。', 'info');
-    return null;
-  };
-  
-  const geocodeLocation = async (loc) => {
-    if (!loc) return null;
-    // OSM APIを使用
-    return await geocodeWithOSM(loc);
-  };
-  
-  // 天気データ取得（代替API使用・時間別対応）
-  const getWeatherData = async (lat, lng, targetDate = null) => {
-    // Open-Meteo APIを使用（無料・CORSフリー）
+  const getWeatherData = async (lat, lng, date) => {
     try {
-      let apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&timezone=Asia/Tokyo`;
-      
-      // 現在の天気と時間別予報を取得
-      apiUrl += '&current_weather=true&hourly=temperature_2m,precipitation,weathercode,windspeed_10m,winddirection_10m,precipitation_probability';
-      
-      // 必要な日数を計算
-      if (targetDate) {
-        const today = new Date();
-        const target = new Date(targetDate);
-        const daysDiff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
-        apiUrl += `&forecast_days=${Math.min(Math.max(daysDiff + 1, 1), 16)}`; // 最大16日
-      }
-      
+      const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,precipitation_probability,weathercode&timezone=Asia/Tokyo&start_date=${date}&end_date=${date}`;
       const response = await fetch(apiUrl);
       const data = await response.json();
-      
-      if (data.current_weather) {
-        const weather = {
-          current: {
-            temperature: data.current_weather.temperature,
-            weathercode: data.current_weather.weathercode,
-            windspeed: data.current_weather.windspeed,
-            time: data.current_weather.time
-          }
-        };
-        
-        // 時間別天気データを整形
-        if (data.hourly) {
-          const hourlyData = [];
-          for (let i = 0; i < data.hourly.time.length; i++) {
-            hourlyData.push({
-              time: data.hourly.time[i],
-              temperature: data.hourly.temperature_2m[i],
-              precipitation: data.hourly.precipitation[i],
-              precipitationProbability: data.hourly.precipitation_probability?.[i] || 0,
-              weathercode: data.hourly.weathercode[i],
-              windspeed: data.hourly.windspeed_10m[i],
-              weatherDescription: getWeatherDescription(data.hourly.weathercode[i])
-            });
-          }
-          setHourlyWeatherData(hourlyData);
-          weather.hourly = hourlyData;
-        }
-        
-        setWeatherData(weather);
-        return weather;
+      if (data && data.hourly) {
+        return data.hourly.time.map((time, i) => ({
+          time: time,
+          temperature: data.hourly.temperature_2m[i],
+          precipitationProbability: data.hourly.precipitation_probability[i],
+          weathercode: data.hourly.weathercode[i],
+          weatherDescription: getWeatherDescription(data.hourly.weathercode[i])
+        }));
       }
-    } catch (error) {
-      console.error('天気データ取得エラー:', error);
-    }
+    } catch (_error) { console.error('天気データ取得エラー:', _error); }
     return null;
   };
   
-  // 天気コードから説明文を生成
   const getWeatherDescription = (code) => {
-    const weatherCodes = {
-      0: '快晴',
-      1: '晴れ', 2: '一部曇り', 3: '曇り',
-      45: '霧', 48: '着氷性の霧',
-      51: '霧雨（弱）', 53: '霧雨（中）', 55: '霧雨（強）',
-      61: '雨（弱）', 63: '雨（中）', 65: '雨（強）',
-      71: '雪（弱）', 73: '雪（中）', 75: '雪（強）',
-      77: 'みぞれ',
-      80: 'にわか雨（弱）', 81: 'にわか雨（中）', 82: 'にわか雨（強）',
-      85: 'にわか雪（弱）', 86: 'にわか雪（強）',
-      95: '雷雨', 96: '雷雨とひょう（弱）', 99: '雷雨とひょう（強）'
-    };
+    const weatherCodes = {0: '快晴', 1: '晴れ', 2: '一部曇り', 3: '曇り', 45: '霧', 61: '雨(弱)', 63: '雨(中)', 65: '雨(強)', 80: 'にわか雨', 95: '雷雨'};
     return weatherCodes[code] || '不明';
   };
-  
-  // ========== 外部ツール（AIが使用） ==========
+
+  const callGeminiAPI = async (requestBody) => {
+    const modelName = 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKeys.gemini}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) {
+        const errorBody = await response.text();
+        console.error("Gemini API Error Response:", errorBody);
+        throw new Error(`Gemini API Error: ${response.status}. Response: ${errorBody}`);
+    }
+    const data = await response.json();
+    const content = data.candidates?.[0]?.content;
+    if (!content) {
+        console.error("Invalid response structure from Gemini API:", data);
+        throw new Error("AIから無効な応答がありました。");
+    }
+    return content;
+  };
+
   const searchWithTavily = async (query) => {
-    if (!apiKeys.tavily) return JSON.stringify({ error: "Tavily APIキーが設定されていません。" });
-    setGeneratingStatus(`Webで「${query}」を検索中...`);
+    setGeneratingStatus(`Web検索: "${query}"`);
     try {
-      const response = await fetch('https://api.tavily.com/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKeys.tavily}` },
-        body: JSON.stringify({ query, search_depth: 'advanced', max_results: 5 })
-      });
-      if (!response.ok) throw new Error(`Tavily API Error: ${response.status}`);
-      const results = await response.json();
-      
-      // 検索結果が空の場合の処理
-      if (!results.results || results.results.length === 0) {
-        return JSON.stringify({ 
-          message: `「${query}」に関する情報は見つかりませんでした。`, 
-          found: false,
-          results: [] 
+        const response = await fetch('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKeys.tavily, query, search_depth: 'advanced', max_results: 5, include_answer: true }),
         });
-      }
-      
-      // 検索結果を構造化して返す
-      return JSON.stringify({
-        found: true,
-        query: query,
-        results: results.results,
-        message: `${results.results.length}件の結果が見つかりました`
-      });
+        if (!response.ok) throw new Error(`Tavily API Error: ${response.status}`);
+        const data = await response.json();
+        return JSON.stringify({ answer: data.answer, results: data.results || [] });
     } catch (error) {
-      console.error('Tavily検索エラー:', error);
-      return JSON.stringify({ error: `検索中にエラーが発生しました: ${error.message}`, found: false });
+        console.error('Tavily検索エラー:', error);
+        return JSON.stringify({ error: `検索エラー: ${error.message}` });
     }
   };
 
-  // ========== AIプラン生成（リトライ機能付き） ==========
   const generatePlan = async () => {
-    if (!newPlanText.trim()) {
-      showNotification('予定を入力してください', 'warning'); return;
-    }
-    if (!apiKeys.gemini || !apiKeys.tavily) {
-      showNotification('Gemini APIキーとTavily APIキーを設定してください。', 'error'); return;
-    }
-    if (!planDate) {
-      showNotification('予定日を選択してください', 'warning'); return;
-    }
+    if (!destination.trim() || !newPlanText.trim() || !planDate) { showNotification('目的地、やりたいこと、予定日をすべて入力してください', 'warning'); return; }
+    if (!apiKeys.gemini || !apiKeys.tavily) { showNotification('APIキーを設定してください', 'error'); return; }
 
     setIsGenerating(true);
-    setGeneratingStatus('計画を分析中...');
-    setRetryCount(0);
-
     try {
-      setGeneratingStatus('現在地と天候を確認中...');
-      let planCoords = currentLocation;
-      if (location) {
-        const geocoded = await geocodeLocation(location);
-        if(geocoded) planCoords = geocoded;
-      }
+      setGeneratingStatus(`「${destination}」の情報を収集中...`);
+      const geo = await geocodeWithOSM(destination);
+      if (!geo) throw new Error(`「${destination}」の場所を特定できませんでした。`);
       
-      // 指定日時の天気データを取得
-      const weatherDataForPlan = planCoords ? await getWeatherData(planCoords.lat, planCoords.lng, planDate) : null;
-      
-      const finalPlan = await generateAIPlanWithToolsWithRetry(newPlanText, location, weatherDataForPlan, planDate, planTime);
-      
-      if (finalPlan) {
-        setGeneratingStatus('プランを地図に反映中...');
-        for (const task of finalPlan.tasks) {
-            if(task.location) {
-                const taskCoords = await geocodeLocation(task.location);
-                if(taskCoords) task.coords = taskCoords;
-            }
-        }
+      const weatherData = await getWeatherData(geo.lat, geo.lng, planDate);
+      if (!weatherData) throw new Error(`「${destination}」の天気予報を取得できませんでした。`);
 
-        const updatedPlans = [finalPlan, ...plans];
-        setPlans(updatedPlans);
-        savePlans(updatedPlans);
-        setNewPlanText('');
-        showNotification('プランを生成しました！', 'success');
-      } else {
-        throw new Error("AIから有効なプランが返されませんでした。");
+      setGeneratingStatus("AIがプランを作成中...");
+      const finalPrompt = buildFinalPrompt(startLocation, destination, newPlanText, planDate, planTime, transportMode, weatherData);
+      const tools = [{ function_declarations: [{ name: "searchWithTavily", description: "場所、営業時間、料金、住所、実在確認、そして特に重要な『地点間の移動時間』など、最新の具体的な情報をWebで検索します。", parameters: { type: "OBJECT", properties: { query: { type: "STRING" } }, required: ["query"] } }] }];
+      
+      const conversationHistory = [{ role: 'user', parts: [{ text: finalPrompt }] }];
+      const initialRequestBody = {
+        contents: conversationHistory,
+        tools,
+        tool_config: { function_calling_config: { mode: "ANY" } },
+      };
+      
+      let modelResponse = await callGeminiAPI(initialRequestBody);
+      
+      const functionCalls = modelResponse.parts.filter(part => part.functionCall);
+      if (functionCalls.length > 0) {
+        conversationHistory.push(modelResponse);
+        setGeneratingStatus(`AIが${functionCalls.length}件の情報を同時に検索中...`);
+        
+        const toolExecutionPromises = functionCalls.map(part => {
+          const { name, args } = part.functionCall;
+          if (name === 'searchWithTavily') return searchWithTavily(args.query);
+          throw new Error(`不明なツール呼び出し: ${name}`);
+        });
+
+        const toolResults = await Promise.all(toolExecutionPromises);
+        
+        conversationHistory.push({
+          role: 'tool',
+          parts: functionCalls.map((part, i) => ({
+            functionResponse: { name: part.functionCall.name, response: { content: toolResults[i] } },
+          })),
+        });
+        
+        setGeneratingStatus("検索結果を元にプランを最終化中...");
+        const followUpRequestBody = { contents: conversationHistory, tools };
+        modelResponse = await callGeminiAPI(followUpRequestBody);
       }
+      
+      let finalPlan;
+      try {
+        const planJsonTextMatch = modelResponse.parts[0].text.match(/```json\s*(\{[\s\S]*\})\s*```/);
+        if (!planJsonTextMatch || !planJsonTextMatch[1]) throw new Error("AIの応答からJSON部分を見つけられませんでした。");
+        finalPlan = JSON.parse(planJsonTextMatch[1]);
+      } catch (e) {
+        console.error("JSONの解析に失敗しました:", e, "\nAIからのテキスト:", modelResponse.parts[0].text);
+        throw new Error("AIが生成したプランの形式が正しくありません。");
+      }
+
+      setGeneratingStatus("プランの地図情報を準備中...");
+      for (const task of finalPlan.tasks) {
+        if (task.isPlottable && task.address && task.address !== 'N/A') {
+          const taskGeo = await geocodeWithOSM(task.address);
+          if (taskGeo) {
+            task.coords = { lat: taskGeo.lat, lng: taskGeo.lng };
+          } else {
+            console.warn(`ジオコーディング失敗: ${task.address}`);
+          }
+        }
+      }
+      
+      const newPlan = { id: Date.now(), ...finalPlan, userInput: newPlanText, startLocation, destination, planDate, planTime, transportMode };
+      setPlans([newPlan, ...plans]);
+      savePlans([newPlan, ...plans]);
+      showNotification('新しいプランを生成しました！', 'success');
 
     } catch (error) {
       console.error('プラン生成エラー:', error);
@@ -363,362 +314,216 @@ const SmartPlannerAI = () => {
     }
   };
 
-  // リトライ機能付きのAIプラン生成
-  const generateAIPlanWithToolsWithRetry = async (userInput, location, weatherData, planDate, planTime, attempt = 1) => {
-    const maxAttempts = 3;
-    const baseDelay = 2000; // 2秒
-    
-    try {
-      return await generateAIPlanWithTools(userInput, location, weatherData, planDate, planTime);
-    } catch (error) {
-      if (error.message.includes('429') && attempt < maxAttempts) {
-        const delay = baseDelay * Math.pow(2, attempt - 1); // 指数バックオフ
-        setGeneratingStatus(`APIレート制限に達しました。${delay/1000}秒後に再試行します... (${attempt}/${maxAttempts})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return generateAIPlanWithToolsWithRetry(userInput, location, weatherData, planDate, planTime, attempt + 1);
-      }
-      throw error;
-    }
-  };
-
-  const generateAIPlanWithTools = async (userInput, location, weatherData, planDate, planTime) => {
-    setGeneratingStatus('AIがプランニングを開始...');
-    
-    // プロンプトに検索を強制する追加指示を含める
-    const searchEnforcementPrompt = `
-【最初に必ず実行すること】
-以下の検索を必ずsearchWithTavilyツールで実行してください：
-1. "${location} 観光スポット おすすめ"
-2. "${location} 飲食店 ランチ"
-3. ユーザーが言及した具体的な店舗名がある場合は "[店舗名] ${location}"
-
-検索せずにプランを作成することは絶対に禁止です。
-`;
-    
-    const prompt = searchEnforcementPrompt + buildPrompt(userInput, location, weatherData, planDate, planTime);
-    const tools = [{
-      function_declarations: [{
-        name: "searchWithTavily",
-        description: "最新の場所、イベント、営業時間、料金、レビューなどの具体的な情報をWebで検索します。必ず使用してください。",
-        parameters: { type: "OBJECT", properties: { query: { type: "STRING", description: "検索キーワード" } }, required: ["query"] }
-      }]
-    }];
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKeys.gemini}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: tools })
-    });
-    
-    if (response.status === 429) {
-      throw new Error('Gemini API Error: 429 - レート制限に達しました');
-    }
-    
-    if (!response.ok) throw new Error(`Gemini API Error (1st call): ${response.status}`);
-    const data = await response.json();
-
-    const aiResponsePart = data.candidates?.[0]?.content?.parts?.[0];
-    if (!aiResponsePart) throw new Error("AIから無効な応答がありました。");
-
-    if (aiResponsePart.functionCall) {
-      setGeneratingStatus('AIが必要情報をWebで検索中...');
-      const { name, args } = aiResponsePart.functionCall;
-      if (name === 'searchWithTavily') {
-        const toolResult = await searchWithTavily(args.query);
-        
-        setGeneratingStatus('検索結果を元にプランを最終化中...');
-        const finalResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKeys.gemini}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              { parts: [{ text: prompt }] },
-              { role: "model", parts: [aiResponsePart] },
-              { role: "tool", parts: [{ functionResponse: { name: "searchWithTavily", response: { content: toolResult } } }] }
-            ],
-            tools: tools
-          })
-        });
-        
-        if (finalResponse.status === 429) {
-          throw new Error('Gemini API Error: 429 - レート制限に達しました');
-        }
-        
-        if (!finalResponse.ok) throw new Error(`Gemini API Error (2nd call): ${finalResponse.status}`);
-        const finalData = await finalResponse.json();
-        const finalText = finalData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!finalText) throw new Error("AIからの最終応答が不正です。");
-
-        const jsonMatch = finalText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const planData = JSON.parse(jsonMatch[0]);
-            return { id: Date.now(), ...planData, userInput, location, planDate, planTime, createdAt: new Date().toISOString() };
-        }
-      }
-    } else if (aiResponsePart.text) {
-        const jsonMatch = aiResponsePart.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const planData = JSON.parse(jsonMatch[0]);
-            return { id: Date.now(), ...planData, userInput, location, planDate, planTime, createdAt: new Date().toISOString() };
-        }
-    }
-    
-    return null;
-  };
-
-  const buildPrompt = (userInput, location, weatherData, planDate, planTime) => {
-    let context = `【ユーザーの要望】\n${userInput}\n\n【現在地/出発地】\n${location}\n\n`;
-    context += `【予定日時】\n${planDate} ${planTime}開始\n\n`;
-    
-    if (weatherData && weatherData.hourly) {
-      context += `【時間別天気予報】\n`;
-      // 予定日の天気データを抽出
-      const targetDateTime = new Date(`${planDate}T00:00:00`);
-      const relevantWeather = weatherData.hourly.filter(h => {
-        const hourDate = new Date(h.time);
-        return hourDate.toDateString() === targetDateTime.toDateString();
+  const buildFinalPrompt = (startLocation, destination, userInput, date, time, transportMode, weatherData) => {
+    let weatherContext = `## 行き先「${destination}」の天気予報 (${date})\n`;
+    if(weatherData){
+      weatherData.forEach(w => {
+        const hour = new Date(w.time).getHours();
+        weatherContext += `- ${hour}時: ${w.weatherDescription}, ${w.temperature}°C, 降水確率${w.precipitationProbability}%\n`;
       });
-      
-      if (relevantWeather.length > 0) {
-        // 朝・昼・夕・夜の代表的な時間の天気を表示
-        const keyHours = [6, 9, 12, 15, 18, 21];
-        keyHours.forEach(hour => {
-          const weatherAtHour = relevantWeather.find(w => new Date(w.time).getHours() === hour);
-          if (weatherAtHour) {
-            context += `- ${hour}時: ${weatherAtHour.weatherDescription}, ${weatherAtHour.temperature}℃, 降水確率${weatherAtHour.precipitationProbability}%, 降水量${weatherAtHour.precipitation}mm\n`;
-          }
-        });
-        
-        // 天気の変化を分析
-        const morningWeather = relevantWeather.filter(w => {
-          const hour = new Date(w.time).getHours();
-          return hour >= 6 && hour < 12;
-        });
-        const afternoonWeather = relevantWeather.filter(w => {
-          const hour = new Date(w.time).getHours();
-          return hour >= 12 && hour < 18;
-        });
-        const eveningWeather = relevantWeather.filter(w => {
-          const hour = new Date(w.time).getHours();
-          return hour >= 18 && hour <= 23;
-        });
-        
-        context += `\n【天気の変化傾向】\n`;
-        context += `- 午前: 主に${getMostCommonWeather(morningWeather)}\n`;
-        context += `- 午後: 主に${getMostCommonWeather(afternoonWeather)}\n`;
-        context += `- 夕方以降: 主に${getMostCommonWeather(eveningWeather)}\n`;
-      }
     }
+    const transportModeText = { auto: 'AIにおまかせ', driving: '車を優先', transit: '公共交通機関を優先'}[transportMode];
 
-    return `あなたは世界最高の旅行プランナー兼リサーチャーです。
+    return `あなたは、共感力と創造性に優れた世界最高のAI旅行コンシェルジュです。以下の情報、思考プロセス、そして絶対的なルール契約に従い、ユーザーに感動を与える完璧なスケジュールを作成してください。
 
-⚠️⚠️⚠️ 超重要警告 ⚠️⚠️⚠️
-推測や想像で店舗を提案することは絶対禁止です。
-必ずsearchWithTavilyで検索して実在を確認してください。
-検索で見つからない店舗は提案しないでください。
-この規則に違反すると、ユーザーに大きな迷惑をかけます。
+### 🚨 絶対厳守ルール (契約) 🚨
+1.  **事実に基づく提案**: 推測や想像は厳禁。全ての情報は\`searchWithTavily\`で確認する。特に**移動時間は必ず検索すること**。
+2.  **ツール使用の徹底**: 場所、営業時間、料金、住所、そして**地点間の移動時間**など、必要な情報は**必ず**\`searchWithTavily\`を呼び出して取得する。その際、ユーザーの交通手段の希望(\`${transportModeText}\`)を考慮した検索クエリ（例：「AからB 車 時間」）を生成すること。
+3.  **現実的な時間計算**: プラン全体の時間は、**検索して得られた移動時間**と滞在時間を厳密に合計して算出する。希望的観測は含めない。
+4.  **出発地と帰宅の考慮**: 「出発地」からの移動と、「出発地」への帰宅を必ず計画に含める。
+5.  **天候の最優先**: 提供された天気予報を最重要視し、プラン全体を最適化する。悪天候の場合は代替案を提案する。
+6.  **リスク管理**: 考えられるリスク（交通渋滞、混雑、売り切れ等）を予測し、具体的な対策を提案する。
+7.  **isPlottableの絶対義務**: 物理的な場所を伴う活動タスクには例外なく\`isPlottable: true\`を、抽象的なタスク（移動、出発、帰宅など）には\`isPlottable: false\`と\`address: "N/A"\`を設定する。
+8.  **JSON出力の厳守**: 最終出力は必ず指定されたJSON形式のみとし、他のテキストを一切含めない。
+9.  **住所の正確性**: 住所は**必ず番地まで**含めること。検索結果が曖昧な場合は、より具体的なクエリで再検索し、住所を特定すること。
+10. **予算の計算**: 検索で見つけた各場所の費用を元に、一人あたりの総予算(\`estimatedBudget\`)を計算して記載すること。
+11.  **住所の区切り方と形式**:
+    *   **都道府県名、市区町村名、町名、番地の間は必ずスペースで区切る。**
+    *   **番地は必ず半角数字とハイフンを使用し、漢字や全角文字は使用しない。**
+    *   例：
+        *   山形県酒田市ゆたか二丁目9番地の7 → 山形県酒田市ゆたか 2-9-7 (正)
+        *   東京都墨田区押上一丁目1番地2 → 東京都墨田区押上 1-1-2 (正)
 
-以下の指示に従って、ユーザーのための完璧なスケジュールプランを作成してください。
+### ✅ 良いタスクの例
 
-### 🚨 絶対に守るべきルール 🚨
-1. **推測や想像で店舗や場所を提案することは絶対に禁止です**
-2. **実在する店舗・施設のみを提案してください**
-3. **店舗情報は必ずsearchWithTavilyツールで検索して確認してください**
-4. **検索で見つからない場合は、その旨を正直に伝えてください**
+{
+  "task": "スカイツリーから展望",
+  "location": "東京都墨田区押上 1-1-2",
+  "isPlottable": true, // <-- 正しい！物理的な場所
+  ...
+}
+
+### ❌ 悪いタスクの例
+
+{
+  "task": "箱根湯本駅から彫刻の森へ移動",
+  "location": "N/A",
+  "isPlottable": true, // <-- 間違い！移動は抽象的なタスク
+  ...
+},
+{
+  "task": "スカイツリーから展望",
+  "location": "東京都墨田区押上1-1-2", // <-- 間違い スペースがない
+  "isPlottable": true,
+  ...
+},
+{
+  "task": "スカイツリーから展望",
+  "location": "東京都墨田区押上 １丁目１−２", // <-- 間違い 全角文字と漢字
+  "isPlottable": true,
+  ...
+},
+{
+  "task": "スカイツリーから展望",
+  "location": "スカイツリーから展望...",
+  "isPlottable": false, // <-- 最悪の間違い！物理的な場所なのにfalseになっている
+  ...
+}
 
 ### 思考プロセス
-1. **分析**: ユーザーの要望とコンテキスト（出発地、天気）を注意深く分析します。
+1.  **役割と意図の理解**: 私は「${startLocation || '指定された場所'}」から出発し、「${destination}」へ行くプランを作成し、無事に帰宅させるまでのコンシェルジュである。ユーザーの「${userInput}」という要望の裏にある「どんな体験をしたいのか」を深く洞察する。
+2.  **情報収集 (場所・時間・費用)**:
+    *   ユーザーの要望を叶えるための候補地を \`searchWithTavily\` で検索し、営業時間、住所、**料金**を特定する。
+    *   **最重要**: 各候補地間の移動手段を決定し、**「A地点からB地点 ${transportModeText === '車を優先' ? '車' : '公共交通'} 時間」のように具体的なクエリで \`searchWithTavily\` を使い、現実的な移動時間を検索する。** この検索を省略してはならない。
+3.  **プラン構築と創造的統合**:
+    *   収集した情報（滞在時間、**検索した移動時間**、費用）に基づき、出発から帰宅まで全てのタスクを時系列に並べる。
+    *   単なる移動と活動の羅列ではなく、例えば「賑やかな活動の後は静かなカフェで一休みする」など、体験の質を高める流れを意識して、ユーザーの要望を創造的にプランに織り込む。
+4.  **リスク分析と対策**: プラン全体を見通し、交通遅延、混雑、天候急変などのリスクを洗い出し、具体的な対策を\`risksAndMitigation\`に記述する。
+5.  **自己評価と修正**: 完成したプランが、絶対厳守ルールを全て守っているか？特に、**移動時間は検索に基づいているか？** \`isPlottable\` は適切か？そして何より、ユーザーの隠れた要望まで満たす、最高の体験を提供できるか？を自問自答し、必要であれば修正を加える。
+6.  **最終出力**: 全てのチェックを終えた後、完璧なプランをJSON形式で出力する。
 
-2. **必須の検索項目**（searchWithTavilyツールを使用）:
-   - 各店舗/施設が実在するか: 「[店舗名] [地域名] 営業時間」で検索
-   - 具体的な住所: 「[店舗名] [地域名] 住所」で検索
-   - 営業状況: 「[店舗名] [地域名] 閉店」で確認（閉店していないか）
-   
-3. **検索結果の扱い**:
-   - 検索で見つかった店舗のみを使用する
-   - 見つからない場合は「[希望の店舗]は見つかりませんでした。代わりに[実在する類似店舗]はいかがでしょうか」と提案
-   - 絶対に架空の店舗を作らない
+### 提供情報
+-   **出発地**: ${startLocation || '指定なし'}
+-   **目的地エリア**: ${destination}
+-   **ユーザーの要望**: ${userInput}
+-   **予定日時**: ${date} ${time}頃から開始
+-   **主な交通手段の希望**: ${transportModeText}
+${weatherContext}
 
-4. **時間帯別天気の活用**:
-   - 提供された時間別天気予報を元に、各タスクの"expectedWeather"フィールドに該当時刻の天気を記載
-   - 天気が悪化する時間帯は屋内活動を配置
-   - 天気が良い時間帯は屋外活動を配置
-
-5. **統合と計画**: 検索で確認できた実在の情報のみを使用し、天気の変化を考慮してプランを作成します。
-
-6. **出力**: 最終的なプランを、指定されたJSON形式で厳密に出力します。
-
-### 提供されている情報
-${context}
-
-### 出力形式（このJSON形式を厳守してください）
+### 出力形式 (このJSON形式を厳守)
+\`\`\`json
 {
-  "title": "プランのタイトル（魅力的で分かりやすいもの）",
-  "summary": "プラン全体の概要と魅力（3～4行で具体的に説明）",
-  "estimatedBudget": "予想される一人当たりの予算感（例: 5,000円～8,000円）",
+  "title": "プランの魅力を凝縮したタイトル",
+  "summary": "プラン全体の概要と、どんな素晴らしい体験ができるかのハイライト（3～4行）",
+  "overallWeatherAssessment": { "isRecommended": true, "assessment": "天気に関する総合評価" },
+  "risksAndMitigation": ["想定されるリスクとその対策"],
+  "estimatedBudget": "（検索結果を元に計算した一人当たりの予想総費用）",
   "tasks": [
     {
-      "time": "開始時刻（最初のタスクは${planTime}から開始）",
-      "task": "具体的なタスク名（例: スターバックス○○店で朝食）",
-      "location": "正確な店舗名と住所（必ず検索結果に基づく）",
-      "duration": "滞在時間の目安（例: 45分）",
-      "transport": "次の場所への移動手段（例: 徒歩5分, 電車15分など）",
-      "notes": "検索で確認できた情報のみ記載（営業時間、定休日、料金など）。検索で見つからなかった情報は「検索で確認できませんでした」と明記",
-      "weatherConsideration": "その時間帯の天気を考慮した具体的アドバイス（例: 14時頃から雨の予報のため、折り畳み傘を持参。屋根のある移動ルートを推奨）",
-      "expectedWeather": "この時間帯の予想天気（例: 晴れ、気温18℃、降水確率10%）"
+      "time": "HH:MM",
+      "task": "具体的なタスク名",
+      "address": "正確な住所。移動タスクの場合は'N/A'",
+      "duration": "滞在時間の目安",
+      "transport": "（検索して得られた移動手段と『正確な所要時間』）",
+      "isPlottable": true,
+      "whyRecommended": "この場所/活動を特に推薦する理由",
+      "notes": "（検索で確認した営業時間や料金情報などを記載）",
+      "weatherConsideration": "その時間帯の天気を考慮した具体的なアドバイス"
     }
   ],
   "totalTime": "総所要時間",
-  "tips": [
-    "プラン全体を通して役立つヒントやコツ（事実に基づくもの）"
-  ],
-  "alternatives": [
-    "悪天候時の代替案（実在する場所のみ）",
-    "時間が押した場合の短縮案"
-  ]
+  "tips": ["プラン全体で役立つヒントや服装のアドバイス"]
 }
-
-### ⚠️ 特に重要な注意事項 ⚠️
-- **セリア、ダイソー、キャンドゥなどのチェーン店**: その地域に実在するか必ず検索で確認。見つからない場合は提案しない
-- **飲食店**: 実在する店舗名と正確な住所を検索で確認してから提案
-- **観光地・施設**: 営業状況を検索で確認（閉館・閉園していないか）
-- **不確実な情報**: 「おそらく」「たぶん」などの推測表現は使わず、「検索で確認できませんでした」と明記
-
-### ❌ 悪い例（絶対にやってはいけない）
-- 「遊佐町にセリアがあります」→ 検索せずに推測で言っている
-- 「○○カフェ（住所：遊佐町1-2-3）」→ 架空の住所を作っている
-- 「多分この辺にダイソーがあるはずです」→ 推測で話している
-
-### ✅ 良い例（このようにしてください）
-- searchWithTavilyで「セリア 遊佐町」を検索 → 結果なし → 「セリアは遊佐町では見つかりませんでした。酒田市の店舗が最寄りです」
-- searchWithTavilyで「カフェ 遊佐町」を検索 → 結果あり → 「○○カフェ（住所：実際の検索結果の住所）」
-- 検索で見つからない → 「ご希望の店舗は見つかりませんでした」と正直に伝える
-
-### 重要な追加指示（天気に関して）
-- **時間帯別の天気変化を必ず考慮**: 晴れから雨への変化、気温の変化などを踏まえてプランを組む
-- **屋内・屋外のバランス**: 雨の時間帯は屋内活動を、晴れの時間帯は屋外活動を優先的に配置
-- **移動時の天気**: 移動中に天気が変わる場合は、適切な対策（傘、上着など）を"weatherConsideration"に記載
-- **開始時刻の考慮**: ユーザーが指定した開始時刻から始まるプランを作成
-
-**最重要**: 検索で存在が確認できない店舗・施設は絶対に提案しないでください。`;
+\`\`\`
+`;
   };
-  
-  const showPlanOnMap = (plan) => {
-    const locationsWithCoords = plan.tasks.filter(t => t.coords?.lat && t.coords?.lng);
-    if (locationsWithCoords.length === 0) {
-        showNotification('プランに有効な場所情報が含まれていません。', 'info');
+
+  const showPlanOnMap = async (plan) => {
+    const plottableTasks = plan.tasks.filter(t => t.isPlottable && t.coords?.lat && t.coords?.lng);
+    let allMapPoints = [...plottableTasks];
+
+    if (plan.startLocation) {
+      setGeneratingStatus("出発地の位置情報を取得中...");
+      const startGeo = await geocodeWithOSM(plan.startLocation);
+      if (startGeo) {
+        const startPoint = {
+          task: '出発地',
+          address: plan.startLocation,
+          coords: { lat: startGeo.lat, lng: startGeo.lng },
+          isPlottable: true
+        };
+        allMapPoints.unshift(startPoint);
+      } else {
+        showNotification(`出発地「${plan.startLocation}」の位置を特定できませんでした。`, 'warning');
+      }
+      setGeneratingStatus("");
+    }
+
+    if (allMapPoints.length < 2) {
+        showNotification('ルートを表示するには、地図表示可能な場所が2箇所以上必要です。', 'info');
         return;
     }
 
-    // ルート付きの地図HTMLを生成
-    const mapHtml = generateRouteMapHtml(locationsWithCoords, plan.title);
+    const mapHtml = generateRouteMapHtml(allMapPoints, plan.title);
     const blob = new Blob([mapHtml], { type: 'text/html' });
     const mapUrl = URL.createObjectURL(blob);
-
     setMapUrl(mapUrl);
-    setMapTitle(`「${plan.title}」の地図（ルート表示）`);
+    setMapTitle(`「${plan.title}」のルート`);
     setShowMapModal(true);
   };
-  
-  // ルート付き地図のHTMLを生成
+
   const generateRouteMapHtml = (locations, title) => {
-    const center = locations[0].coords;
-    const coordinates = locations.map(l => [l.coords.lat, l.coords.lng]);
-    
+    const waypoints = locations.map(l => `L.latLng(${l.coords.lat}, ${l.coords.lng})`);
+    const locationData = locations.map(l => ({ task: l.task, address: l.address.replace(/'/g, "\\'") }));
+
     return `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>${title}</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-polylinedecorator/dist/leaflet.polylineDecorator.js"></script>
-    <style>
-        body { margin: 0; padding: 0; }
-        #map { height: 100vh; width: 100%; }
-        .custom-popup { font-size: 14px; }
-        .task-number { 
-            background: #3b82f6; 
-            color: white; 
-            border-radius: 50%; 
-            width: 30px; 
-            height: 30px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-weight: bold; 
-        }
-    </style>
-</head>
-<body>
-    <div id="map"></div>
-    <script>
-        // 地図を初期化
-        const map = L.map('map').setView([${center.lat}, ${center.lng}], 14);
-        
-        // OpenStreetMapタイルを追加
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-        
-        // カスタムアイコンを作成
-        function createNumberedIcon(number) {
-            return L.divIcon({
-                className: 'custom-div-icon',
-                html: '<div class="task-number">' + number + '</div>',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15],
-                popupAnchor: [0, -20]
-            });
-        }
-        
-        // マーカーを追加
-        const markers = [];
-        ${locations.map((location, index) => `
-        markers.push(L.marker([${location.coords.lat}, ${location.coords.lng}], {
-            icon: createNumberedIcon(${index + 1})
-        }).addTo(map).bindPopup('<div class="custom-popup"><strong>【${index + 1}】 ${location.task}</strong><br>${location.time} - ${location.location}</div>'));
-        `).join('')}
-        
-        // 全マーカーが見えるように地図を調整
-        const group = new L.featureGroup(markers);
-        map.fitBounds(group.getBounds().pad(0.1));
-        
-        // ルートラインを追加（徒歩経路を想定した簡易版）
-        const routeCoordinates = [${coordinates.map(coord => `[${coord[0]}, ${coord[1]}]`).join(', ')}];
-        
-        // 各地点を結ぶ線を描画
-        for (let i = 0; i < routeCoordinates.length - 1; i++) {
-            L.polyline([routeCoordinates[i], routeCoordinates[i + 1]], {
-                color: '#3b82f6',
-                weight: 4,
-                opacity: 0.7,
-                dashArray: '10, 10'
-            }).addTo(map);
-            
-            // 矢印を追加（方向を示す）
-            const start = routeCoordinates[i];
-            const end = routeCoordinates[i + 1];
-            const midpoint = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
-            
-            L.polylineDecorator([[start, end]], {
-                patterns: [
-                    {offset: '50%', repeat: 0, symbol: L.Symbol.arrowHead({pixelSize: 15, polygon: false, pathOptions: {stroke: true, color: '#3b82f6', weight: 3}})}
-                ]
-            }).addTo(map);
-        }
-    </script>
-</body>
-</html>
-    `;
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+<style>
+  body, #map { margin:0; padding:0; height:100vh; width:100%; }
+  .leaflet-routing-container { display: none; }
+</style>
+</head><body><div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+<script>
+  const map = L.map('map').setView([${locations[0].coords.lat}, ${locations[0].coords.lng}], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+  const waypoints = [${waypoints.join(',\n')}];
+  const locationData = ${JSON.stringify(locationData)};
+
+  L.Routing.control({
+    waypoints: waypoints,
+    routeWhileDragging: true,
+    show: false,
+    addWaypoints: false,
+    createMarker: function(i, waypoint, n) {
+      const currentLocation = locationData[i];
+      const isStart = currentLocation.task === '出発地';
+      const bgColor = isStart ? '#16a34a' : '#3b82f6';
+      let markerContent;
+
+      if (isStart) {
+        markerContent = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
+      } else {
+        const hasStartPoint = locationData[0].task === '出発地';
+        markerContent = hasStartPoint ? i : i + 1;
+      }
+
+      const marker = L.marker(waypoint.latLng, {
+        icon: L.divIcon({
+          html: \`<div style="background-color: \${bgColor}; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);">\${markerContent}</div>\`,
+          className: 'custom-marker-icon',
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        })
+      });
+
+      const popupHtml = \`<strong>\${currentLocation.task}</strong><br>\${currentLocation.address.replace(/\\n/g, '<br>')}\`;
+      marker.bindPopup(popupHtml);
+      return marker;
+    },
+    lineOptions: {
+      styles: [{color: '#3b82f6', opacity: 0.8, weight: 6}]
+    }
+  }).addTo(map);
+</script></body></html>`;
   };
 
-  // ========== UI関連 ==========
   const initializeDarkMode = () => {
-    const saved = localStorage.getItem('smart-planner-dark-mode');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDark = saved === 'true' || (saved === null && prefersDark);
+    const isDark = localStorage.getItem('smart-planner-dark-mode') === 'true' || window.matchMedia('(prefers-color-scheme: dark)').matches;
     setDarkMode(isDark);
     document.documentElement.classList.toggle('dark', isDark);
   };
@@ -727,7 +532,7 @@ ${context}
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     document.documentElement.classList.toggle('dark', newDarkMode);
-    localStorage.setItem('smart-planner-dark-mode', newDarkMode);
+    localStorage.setItem('smart-planner-dark-mode', String(newDarkMode));
   };
 
   const showNotification = (message, type = 'info') => {
@@ -738,219 +543,205 @@ ${context}
   const goHome = () => navigate('/');
   const hasAPIKeys = apiKeys.gemini && apiKeys.tavily;
 
+  const WeatherAssessment = ({ assessment }) => {
+    if (!assessment) return null;
+    const isGood = assessment.isRecommended;
+    const bgColor = isGood ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-red-50 dark:bg-red-900/30';
+    const textColor = isGood ? 'text-blue-700 dark:text-blue-300' : 'text-red-700 dark:text-red-300';
+    const Icon = isGood ? Smile : Frown;
+
+    return (
+        <div className={`p-4 rounded-lg flex items-start gap-3 ${bgColor} ${textColor}`}>
+            <Icon className="w-6 h-6 flex-shrink-0 mt-0.5"/>
+            <div>
+                <h4 className="font-semibold">AIによる天候診断</h4>
+                <p>{assessment.assessment}</p>
+            </div>
+        </div>
+    );
+  };
+
+  const RiskAssessment = ({ risks }) => {
+    if (!risks || risks.length === 0) return null;
+    return (
+        <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">
+            <div className="flex items-start gap-3">
+                <ShieldCheck className="w-6 h-6 flex-shrink-0 mt-0.5"/>
+                <div>
+                    <h4 className="font-semibold">リスクと対策</h4>
+                    <ul className="list-disc list-inside mt-1 text-sm space-y-1">
+                        {risks.map((risk, i) => <li key={i}>{risk}</li>)}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    )
+  }
+  
+  const getTransportIcon = (transportText = '') => {
+      const text = transportText.toLowerCase();
+      if (text.includes('徒歩')) return <Footprints size={16} />;
+      if (text.includes('車') || text.includes('driving')) return <Car size={16} />;
+      if (text.includes('公共交通') || text.includes('電車') || text.includes('バス') || text.includes('transit')) return <Train size={16} />;
+      return <Route size={16}/>
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors" style={{position: 'fixed', width: '100%', height: '100%', overflow: 'auto'}}>
       {notification && (
-        <div className="fixed top-4 left-4 right-4 z-50">
-          <div className={`p-4 rounded-lg shadow-lg border ${
-            notification.type === 'success' ? 'bg-green-100 dark:bg-green-800 border-green-300' :
-            notification.type === 'error' ? 'bg-red-100 dark:bg-red-800 border-red-300' :
-            'bg-yellow-100 dark:bg-yellow-800 border-yellow-300'
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 w-full max-w-md z-50">
+          <div className={`p-4 rounded-lg shadow-lg border flex items-center gap-3 ${
+            notification.type === 'success' ? 'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200' :
+            notification.type === 'error' ? 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-200' :
+            'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200'
           }`}>
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              <span className="font-medium">{notification.message}</span>
-            </div>
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="font-medium">{notification.message}</span>
           </div>
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto p-4" style={{paddingBottom: '40px'}}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6 pb-10">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <button onClick={goHome} className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                <Home className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              <button onClick={goHome} className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"><Home className="w-5 h-5" /></button>
+              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">スマート計画立てAI</h1>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400">あなたのための最高のAIコンシェルジュ</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleDarkMode} className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">{darkMode ? <Sun size={20} /> : <Zap size={20} />}</button>
+            <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"><Settings size={20} /><span className="hidden sm:inline">設定</span></button>
+          </div>
+        </header>
+
+        <main>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2"><Plus className="w-6 h-6 text-blue-600" />新しいプランを作成</h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><Flag size={16}/>出発地</label>
+                      <div className="flex gap-2">
+                          <input type="text" value={startLocation} onChange={(e) => setStartLocation(e.target.value)} placeholder="例: 東京駅 (任意)" className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                          <button onClick={getCurrentLocation} title="現在地を出発地に設定" className="px-4 py-3 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg"><Navigation className="w-5 h-5"/></button>
+                      </div>
+                  </div>
+                  <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><MapPinned size={16}/>目的地 (行きたいエリア) <span className="text-red-500">*</span></label>
+                      <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="例: 神奈川県箱根町" className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                  </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                <input type="time" value={planTime} onChange={(e) => setPlanTime(e.target.value)} className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                    <option value="auto">交通手段: AIにおまかせ</option>
+                    <option value="driving">交通手段: 車を優先</option>
+                    <option value="transit">交通手段: 公共交通機関を優先</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">目的地での具体的な要望 <span className="text-red-500">*</span></label>
+                <textarea value={newPlanText} onChange={(e) => setNewPlanText(e.target.value)} placeholder="例: 彫刻の森美術館に行って、美味しい蕎麦を食べ、日帰り温泉でリラックスしたい" className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg resize-none bg-white dark:bg-gray-700" rows="3"/>
+              </div>
+              <button onClick={generatePlan} disabled={isGenerating || !destination.trim() || !newPlanText.trim() || !planDate} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-semibold disabled:cursor-not-allowed">
+                {isGenerating ? (<><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div><span>{generatingStatus || 'AIで分析中...'}</span></>) : (<><Brain className="w-5 h-5" /> AIでプランを作成</>)}
               </button>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">
-                スマート計画立てAI
-              </h1>
-            </div>
-            <p className="text-gray-600 dark:text-gray-400">AIがあなたの予定を効率的なスケジュールに変換します</p>
-          </div>
-          <button onClick={() => setShowSettings(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
-            <Settings className="w-5 h-5" />
-            <span className="hidden sm:inline">設定</span>
-          </button>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Plus className="w-6 h-6 text-blue-600" />
-            新しいプランを作成
-          </h2>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">予定日 <span className="text-red-500">*</span></label>
-                <input 
-                  type="date" 
-                  value={planDate} 
-                  onChange={(e) => setPlanDate(e.target.value)} 
-                  min={new Date().toISOString().split('T')[0]}
-                  max={new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">開始時刻</label>
-                <input 
-                  type="time" 
-                  value={planTime} 
-                  onChange={(e) => setPlanTime(e.target.value)} 
-                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">出発地</label>
-              <div className="flex gap-2">
-                <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="例: 東京駅、渋谷" className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
-                <button onClick={getCurrentLocation} className="px-4 py-3 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg"><Navigation className="w-5 h-5 text-gray-700 dark:text-gray-300"/></button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">やりたいこと</label>
-              <textarea value={newPlanText} onChange={(e) => setNewPlanText(e.target.value)} placeholder="例: 明日、銀行に行って、買い物をして、友達とランチをしたい" className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white" rows="3"/>
-            </div>
-            
-            <button onClick={generatePlan} disabled={isGenerating || !newPlanText.trim() || !planDate} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors font-semibold disabled:cursor-not-allowed">
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>{generatingStatus || 'AIで分析中...'}</span>
-                </>
-              ) : (
-                <><Brain className="w-5 h-5" /> AIでプランを作成</>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {!hasAPIKeys && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 mb-8">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5 w-5 h-5" />
-              <div>
-                <h3 className="font-medium text-yellow-800 dark:text-yellow-300 mb-1">APIキーが未設定です</h3>
-                <p className="text-yellow-700 dark:text-yellow-400 text-sm mb-3">AI機能と検索機能を使用するには、設定でGemini APIキーとTavily APIキーを登録してください。</p>
-                <p className="text-yellow-700 dark:text-yellow-400 text-sm mb-3">※ YOLP APIキーは不要です（CORSの問題により使用できません）</p>
-                <button onClick={() => setShowSettings(true)} className="text-sm bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded transition-colors">設定を開く</button>
-              </div>
             </div>
           </div>
-        )}
 
-        <div className="space-y-6">
-          {plans.length === 0 && !isGenerating && (
-            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-              <Target className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">プランがありません</h3>
-              <p className="text-gray-600 dark:text-gray-400">上記から新しいプランを作成してみてください。</p>
-            </div>
-          )}
-          {plans.map((plan) => (
-            <div key={plan.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">{plan.title}</h3>
-                    <p className="text-gray-700 dark:text-gray-300 mb-3">{plan.summary}</p>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                      <span className="flex items-center gap-1"><Clock className="w-4 h-4" />{plan.totalTime}</span>
-                      <span className="flex items-center gap-1"><DollarSign className="w-4 h-4" />{plan.estimatedBudget}</span>
-                      {plan.planDate && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          予定: {new Date(plan.planDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 ml-4">
-                    <button onClick={() => showPlanOnMap(plan)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg" title="地図で表示"><Map className="w-5 h-5" /></button>
-                    <button onClick={() => deletePlan(plan.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="削除"><Trash2 className="w-5 h-5" /></button>
-                  </div>
-                </div>
+          {!hasAPIKeys && (<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 mb-8 flex items-start gap-3"><AlertCircle className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5 w-5 h-5" /><div><h3 className="font-medium text-yellow-800 dark:text-yellow-300">APIキーが未設定です</h3><p className="text-yellow-700 dark:text-yellow-400 text-sm">AI機能を使用するには、設定でGeminiとTavilyのAPIキーを登録してください。</p></div></div>)}
 
-                <div className="space-y-3 p-6 pt-0">
-                  {plan.tasks?.map((task, index) => (
-                    <div key={index} className="flex gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-semibold">{index + 1}</div>
-                        <span className="font-medium text-blue-600 dark:text-blue-400 mt-2">{task.time}</span>
+          <div className="space-y-6">
+            {plans.length === 0 && !isGenerating && (
+              <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                <Target className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium">プランがありません</h3><p className="text-gray-600 dark:text-gray-400">上記から新しいプランを作成してみてください。</p>
+              </div>
+            )}
+            {plans.map((plan) => (
+              <div key={plan.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                <div className="p-6">
+                  <header className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{plan.title}</h3>
+                      <p className="text-gray-700 dark:text-gray-300 mb-4">{plan.summary}</p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
+                        <span className="flex items-center gap-1.5"><Clock size={16} />{plan.totalTime}</span>
+                        <span className="flex items-center gap-1.5"><DollarSign size={16} />{plan.estimatedBudget}</span>
+                        <span className="flex items-center gap-1.5"><Calendar size={16} />{new Date(plan.planDate).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })}</span>
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-1">{task.task}</h4>
-                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          <span className="flex items-start gap-2"><MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{task.location}</span></span>
-                          <span className="flex items-center gap-2"><Clock className="w-4 h-4" />{task.duration}</span>
-                          {task.transport && (
-                            <span className="flex items-center gap-2">
-                              {task.transport.includes('徒歩') || task.transport.includes('車') ? <Car className="w-4 h-4" /> : <Train className="w-4 h-4" />}
-                              {task.transport}
-                            </span>
-                          )}
+                    </div>
+                    <div className="flex gap-2 ml-4">
+                      <button onClick={() => showPlanOnMap(plan)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg" title="地図でルート表示"><Route size={20} /></button>
+                      <button onClick={() => deletePlan(plan.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="削除"><Trash2 size={20} /></button>
+                    </div>
+                  </header>
+
+                  <div className="mt-6 space-y-4">
+                    <WeatherAssessment assessment={plan.overallWeatherAssessment} />
+                    <RiskAssessment risks={plan.risksAndMitigation} />
+                    {plan.tasks?.map((task, index) => (
+                      <div key={index} className="flex gap-4">
+                        <div className="flex flex-col items-center flex-shrink-0 pt-1">
+                           <div className={`w-8 h-8 ${task.isPlottable ? 'bg-blue-600' : 'bg-gray-400'} text-white rounded-full flex items-center justify-center text-sm font-semibold`}>
+                               {task.isPlottable ? (plan.tasks.filter(t => t.isPlottable).findIndex(t => t.task === task.task) + 1) : '-'}
+                           </div>
+                           {index < plan.tasks.length - 1 && <div className="w-px h-full bg-gray-300 dark:bg-gray-600 my-2"></div>}
                         </div>
-                        {task.notes && <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 bg-gray-100 dark:bg-gray-600 p-2 rounded">{task.notes}</p>}
-                        {task.expectedWeather && <p className="text-sm text-green-600 dark:text-green-400 mt-1 flex items-center gap-1"><Cloud className="w-4 h-4"/> {task.expectedWeather}</p>}
-                        {task.weatherConsideration && <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">{task.weatherConsideration}</p>}
+                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                          <p className="font-semibold text-blue-600 dark:text-blue-400">{task.time} ({task.duration})</p>
+                          <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{task.task}</h4>
+                          <div className="space-y-3 text-sm">
+                            {task.whyRecommended && <p className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md flex items-start gap-2 text-blue-800 dark:text-blue-200"><Info className="w-4 h-4 mt-0.5 flex-shrink-0"/><span><span className="font-semibold">おすすめ理由:</span> {task.whyRecommended}</span></p>}
+                            {task.address && task.address !== 'N/A' && <p className="flex items-start gap-2"><MapPin size={16} className="mt-0.5 flex-shrink-0" /><span>{task.address.replace(/\\n/g, '\n')}</span></p>}
+                            {task.transport && <p className="flex items-center gap-2">{getTransportIcon(task.transport)}<span>{task.transport}</span></p>}
+                            {task.weatherConsideration && <p className="text-xs p-2 bg-gray-100 dark:bg-gray-600 rounded flex items-start gap-2"><Cloud size={14} className="mt-0.5 flex-shrink-0"/>{task.weatherConsideration}</p>}
+                            {task.notes && <p className="text-xs p-2 bg-gray-200 dark:bg-gray-800 rounded">{task.notes}</p>}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  
+                  {plan.tips?.length > 0 && <footer className="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg"><h5 className="font-semibold mb-2">役立つヒント</h5><ul className="list-disc list-inside space-y-1 text-sm">{plan.tips.map((tip, i) => <li key={i}>{tip}</li>)}</ul></footer>}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </main>
       </div>
 
       {showSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">API設定</h2>
-              <button onClick={() => setShowSettings(false)} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg"><X className="w-5 h-5"/></button>
+              <h2 className="text-xl font-semibold">API設定</h2>
+              <button onClick={() => setShowSettings(false)} className="p-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={20}/></button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Gemini API キー <span className="text-red-500">*</span></label>
-                <input type="password" id="gemini-api-key" defaultValue={apiKeys.gemini} className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
-                <p className="text-xs mt-1 text-gray-500 dark:text-gray-400"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google AI Studioで取得</a></p>
+                <label className="block text-sm font-medium mb-1">Gemini API キー <span className="text-red-500">*</span></label>
+                <input type="password" id="gemini-api-key" defaultValue={apiKeys.gemini} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                <p className="text-xs mt-1 text-gray-500"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Google AI Studioで取得</a></p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tavily API キー <span className="text-red-500">*</span></label>
-                <input type="password" id="tavily-api-key" defaultValue={apiKeys.tavily} className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"/>
-                <p className="text-xs mt-1 text-gray-500 dark:text-gray-400"><a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Tavilyで取得</a></p>
-              </div>
-              <div className="opacity-50">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">YOLP API キー（不要）</label>
-                <input type="password" id="yolp-api-key" defaultValue={apiKeys.yolp} disabled className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 cursor-not-allowed"/>
-                <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">CORSの問題により使用できません</p>
-              </div>
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  ※ 地図表示と位置情報はOpenStreetMapとOpen-Meteo APIを使用します（APIキー不要）
-                </p>
+                <label className="block text-sm font-medium mb-1">Tavily API キー <span className="text-red-500">*</span></label>
+                <input type="password" id="tavily-api-key" defaultValue={apiKeys.tavily} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"/>
+                <p className="text-xs mt-1 text-gray-500"><a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Tavilyで取得</a></p>
               </div>
               <div className="flex gap-3 pt-4">
                 <button onClick={saveSettings} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">保存</button>
-                <button onClick={() => setShowSettings(false)} className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500">キャンセル</button>
+                <button onClick={() => setShowSettings(false)} className="flex-1 bg-gray-300 dark:bg-gray-600 py-2 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500">キャンセル</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <MapModal 
-        isOpen={showMapModal} 
-        onClose={() => setShowMapModal(false)} 
-        url={mapUrl}
-        title={mapTitle}
-      />
+      <MapModal isOpen={showMapModal} onClose={() => setShowMapModal(false)} url={mapUrl} title={mapTitle} />
     </div>
   );
 };
