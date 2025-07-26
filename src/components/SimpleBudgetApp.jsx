@@ -1,128 +1,59 @@
+/* eslint-disable */
 import React, { useState, useEffect, useRef } from 'react';
+import { createWorker } from 'tesseract.js';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, Calendar, Download, Upload, Settings, BarChart3, Filter, Search, RefreshCw, RefreshCcw , Database, Eye, EyeOff, Menu, X, Check, Info, AlertCircle, Trash2, Edit3, Home, Car, Utensils, ShoppingCart, Heart, Briefcase, GraduationCap, Plane, Coffee, Gift, Music, Smartphone, Gamepad2, Sun, Moon, Brain, Loader, ChevronDown, ChevronUp,  Camera, Circle, Target, PiggyBank } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import Tesseract from 'tesseract.js';
 
 // Colors for charts
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#8dd1e1', '#d084d0', '#ffb347'];
 
-// ★★★★★ 修正済みのCameraModalコンポーネント ★★★★★
+// ★★★★★ CameraModalコンポーネント: カメラフィードを表示しキャプチャする ★★★★★
 const CameraModal = ({ isOpen, onClose, onCapture }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const [stream, setStream] = useState(null);
-  const [capturedImage, setCapturedImage] = useState(null);
-
-  // カメラを起動する処理
   useEffect(() => {
     if (isOpen) {
-      const startCamera = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' } // 背面カメラを優先
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-          setStream(stream);
-        } catch (err) {
-          console.error("カメラの起動に失敗しました:", err);
-          alert("カメラの起動に失敗しました。ブラウザのカメラアクセス許可を確認してください。");
-          onClose();
-        }
-      };
-      startCamera();
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { if (videoRef.current) videoRef.current.srcObject = stream; })
+        .catch(console.error);
     }
-
-    // カメラを停止するクリーンアップ処理
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (videoRef.current && videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       }
     };
   }, [isOpen]);
-
   if (!isOpen) return null;
-
-  // 撮影処理
   const handleCapture = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-      const imageDataUrl = canvas.toDataURL('image/jpeg');
-      setCapturedImage(imageDataUrl);
-      // 撮影後はストリームを停止
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    }
-  };
-
-  // 再撮影処理
-  const handleRetake = () => {
-    setCapturedImage(null);
-    // 再度カメラを起動
-    const startCamera = async () => {
-      try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        if (videoRef.current) {
-          videoRef.current.srcObject = newStream;
-        }
-        setStream(newStream);
-      } catch (err) {
-        console.error("カメラの再起動に失敗しました:", err);
-      }
-    };
-    startCamera();
-  };
-
-  // 撮影した写真を使用する処理
-  const handleUsePhoto = () => {
-    onCapture(capturedImage);
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = canvas.toDataURL('image/png');
+    onCapture(imageData);
     onClose();
   };
-
-
   return (
-    // ★★★ 修正点: z-50 を style={{ zIndex: 1001 }} に変更 ★★★
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex flex-col items-center justify-center" style={{ zIndex: 1001 }}>
-      <div className="relative w-full max-w-lg aspect-video">
-        {capturedImage ? (
-          <img src={capturedImage} alt="撮影したレシート" className="w-full h-full object-contain" />
-        ) : (
-          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain"></video>
-        )}
-        <canvas ref={canvasRef} className="hidden"></canvas>
-      </div>
-
-      <div className="absolute bottom-8 flex items-center justify-center w-full space-x-8">
-        {capturedImage ? (
-          <>
-            <button onClick={handleRetake} className="p-4 bg-gray-700 rounded-full text-white">
-              <RefreshCcw size={28} />
-            </button>
-            <button onClick={handleUsePhoto} className="p-4 bg-blue-600 rounded-full text-white">
-              <Check size={40} />
-            </button>
-          </>
-        ) : (
-          <button onClick={handleCapture} className="w-20 h-20 bg-white rounded-full flex items-center justify-center border-4 border-gray-400">
-            <Circle size={60} className="text-white fill-current" />
-          </button>
-        )}
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-4 rounded-lg">
+        <video ref={videoRef} autoPlay playsInline className="w-80 h-60" />
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="mt-2 flex justify-between">
+          <button onClick={handleCapture} className="px-4 py-2 bg-blue-600 text-white rounded">キャプチャ</button>
+          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded">閉じる</button>
+        </div>
       </div>
     </div>
   );
 };
 
-// ★★★★★ 新機能1: AI予算プランナーのモーダル ★★★★★
+// ★★★★★ AI予算プランナーのモーダル ★★★★★
 const BudgetPlannerModal = ({ isOpen, onClose, budget, formatAmount }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
@@ -158,272 +89,6 @@ const BudgetPlannerModal = ({ isOpen, onClose, budget, formatAmount }) => {
             >
               閉じる
             </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const TransactionDetailModal = ({
-  darkMode, transaction, onClose, onEdit, formatAmount, formatDate, categoryIcons
-}) => {
-  if (!transaction) return null;
-
-  const IconComponent = categoryIcons[transaction.category] || Coffee;
-  const details = transaction.details || transaction.description || '';
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl max-w-md w-full`}>
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-              取引詳細
-            </h2>
-            <button
-              onClick={onClose}
-              className={`p-2 rounded-md ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {/* 金額とタイプ */}
-            <div className="text-center">
-              <div className={`inline-flex items-center gap-3 p-4 rounded-lg ${
-                transaction.type === 'income'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                <IconComponent size={24} />
-                <span className="text-2xl font-bold">
-                  {transaction.type === 'income' ? '+' : '-'}
-                  {formatAmount(transaction.amount)}
-                </span>
-              </div>
-            </div>
-
-            {/* 基本情報 */}
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>カテゴリー</span>
-                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{transaction.category}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>日付</span>
-                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                  {new Date(transaction.date).toLocaleDateString('ja-JP')}
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>タイプ</span>
-                <span className={`font-medium ${
-                  transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {transaction.type === 'income' ? '収入' : '支出'}
-                </span>
-              </div>
-            </div>
-
-            {/* 詳細 */}
-            {details && (
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  詳細
-                </label>
-                <div className={`p-3 rounded-lg whitespace-pre-wrap ${
-                  darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-50 text-gray-700'
-                }`}>
-                  {details}
-                </div>
-              </div>
-            )}
-
-            {/* ボタン */}
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => onEdit(transaction)}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <Edit3 size={16} />
-                編集
-              </button>
-              <button
-                onClick={onClose}
-                className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-                  darkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const EditTransactionModal = ({
-  darkMode, transaction, amount, setAmount, category, setCategory, details, setDetails,
-  type, setType, date, setDate, categories, onUpdate, onCancel, setShowCategoryManager
-}) => {
-  if (!transaction) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl max-w-md w-full max-h-96 overflow-hidden`}>
-        <div className="p-6 max-h-96 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-              取引を編集
-            </h2>
-            <button
-              onClick={onCancel}
-              className={`p-2 rounded-md ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {/* 取引タイプ */}
-            <div className="flex gap-4">
-              <label className="flex items-center flex-1">
-                <input
-                  type="radio"
-                  value="income"
-                  checked={type === 'income'}
-                  onChange={(e) => {
-                    setType(e.target.value);
-                    setCategory('');
-                  }}
-                  className="mr-2"
-                />
-                <span className="text-green-600 font-semibold">収入</span>
-              </label>
-              <label className="flex items-center flex-1">
-                <input
-                  type="radio"
-                  value="expense"
-                  checked={type === 'expense'}
-                  onChange={(e) => {
-                    setType(e.target.value);
-                    setCategory('');
-                  }}
-                  className="mr-2"
-                />
-                <span className="text-red-600 font-semibold">支出</span>
-              </label>
-            </div>
-
-            {/* 金額 */}
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                金額
-              </label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md ${
-                  darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-            </div>
-
-            {/* カテゴリー */}
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                カテゴリー
-              </label>
-              <select
-                value={category}
-                onChange={(e) => {
-                  if (e.target.value === '__ADD_NEW__') {
-                    setShowCategoryManager(true);
-                  } else {
-                    setCategory(e.target.value);
-                  }
-                }}
-                className={`w-full px-3 py-2 border rounded-md ${
-                  darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-              >
-                <option value="">カテゴリーを選択</option>
-                {categories[type].map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-                <option value="__ADD_NEW__" className="text-blue-600 font-medium">
-                  ➕ 新しいカテゴリを追加
-                </option>
-              </select>
-            </div>
-
-            {/* 詳細 */}
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                詳細
-              </label>
-              <textarea
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                rows={3}
-                className={`w-full px-3 py-2 border rounded-md resize-none ${
-                  darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-            </div>
-
-            {/* 日付 */}
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                日付
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-md ${
-                  darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-            </div>
-
-            {/* ボタン */}
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={onUpdate}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <Check size={16} />
-                更新
-              </button>
-              <button
-                onClick={onCancel}
-                className={`flex-1 py-2 px-4 rounded-md transition-colors ${
-                  darkMode
-                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                キャンセル
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -688,112 +353,69 @@ const AddView = ({
   setShowCategoryManager, categories, details, setDetails, date, setDate, addTransaction,
   geminiApiKey, showNotification
 }) => {
-  const [isReadingReceipt, setIsReadingReceipt] = useState(false);
+  // レシート読み込み用の状態
   const [showCameraModal, setShowCameraModal] = useState(false);
-
-  // 撮影完了後の処理
-  const handleCaptureComplete = async (imageDataUrl) => {
-    if (!imageDataUrl) return;
-
-    if (!geminiApiKey) {
-      showNotification('レシート読み取り機能には、設定画面でのGemini API KEYの登録が必要です。', 'warning');
-      return;
-    }
-
-    setIsReadingReceipt(true);
-
-    try {
-      const base64Image = imageDataUrl.split(',')[1];
-
-      const prompt = `このレシート画像から以下の情報を読み取り、JSON形式で出力してください。
-- 合計金額 (totalAmount)
-- 店名 (storeName)
-- 取引日 (transactionDate in YYYY-MM-DD format)
-- 取引タイプ (type): 内容を判断し、'income' (収入) または 'expense' (支出) のどちらかを選択してください。ほとんどの店舗レシートは 'expense' になります。
-- カテゴリ (category): 店名や内容から最も適切と思われるカテゴリを以下のリストから選び、該当がなければ'その他'としてください。
-
-【カテゴリリスト】: ${[...categories.income, ...categories.expense].join(', ')}
-`;
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
-            ]
-          }],
-          generation_config: { response_mime_type: "application/json" }
-        })
-      });
-
-      if (!response.ok) throw new Error('レシートの解析に失敗しました。');
-      
-      const data = await response.json();
-      const receiptDataText = data.candidates[0].content.parts[0].text;
-      const receiptData = JSON.parse(receiptDataText);
-
-      if (receiptData.totalAmount) setAmount(receiptData.totalAmount.toString());
-      if (receiptData.storeName) setDetails(receiptData.storeName);
-      if (receiptData.transactionDate) setDate(receiptData.transactionDate);
-
-      if (receiptData.type === 'income' || receiptData.type === 'expense') {
-        setType(receiptData.type);
-        if (receiptData.category && categories[receiptData.type].includes(receiptData.category)) {
-          setCategory(receiptData.category);
-        } else {
-          setCategory('その他');
-        }
-      }
-
-      showNotification('レシートから情報を読み取りました。内容を確認してください。', 'success');
-    } catch (error) {
-      console.error(error);
-      showNotification('レシートの読み取り中にエラーが発生しました。', 'error');
-    } finally {
-      setIsReadingReceipt(false);
-    }
-  };
+  const [isReadingReceipt, setIsReadingReceipt] = useState(false);
 
   return (
-    <>
+    <>  
+      {/* CameraModal for receipt capture */}
       <CameraModal
         isOpen={showCameraModal}
         onClose={() => setShowCameraModal(false)}
-        onCapture={handleCaptureComplete}
+        onCapture={async (imageDataUrl) => {
+          setShowCameraModal(false);
+          setIsReadingReceipt(true);
+          try {
+            // OCR解析
+            const { data: { text } } = await Tesseract.recognize(imageDataUrl, 'jpn');
+            setDetails(text);
+            showNotification('レシートからテキストを読み取りました', 'success');
+          } catch (err) {
+            console.error(err);
+            showNotification('レシート読み取りに失敗しました', 'error');
+          } finally {
+            setIsReadingReceipt(false);
+          }
+        }}
       />
+      {/* 解析中オーバーレイ */}
+      {isReadingReceipt && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-10">
+          <Loader size={48} className="text-white animate-spin" />
+          <p className="text-white mt-4">レシートを解析中...</p>
+        </div>
+      )}
       <div className="pb-20 relative">
-        {isReadingReceipt && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center z-10 rounded-lg">
-            <Loader size={48} className="text-white animate-spin" />
-            <p className="text-white mt-4">レシートを解析中...</p>
-          </div>
-        )}
-
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
           <div className="flex justify-between items-center mb-6">
-            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-              取引を追加
-            </h2>
-            <button
-              onClick={() => setShowCameraModal(true)}
-              className="bg-indigo-600 text-white py-2 px-3 rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-2"
-            >
-              <Camera size={16} />
-              <span>カメラで読取</span>
-            </button>
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>取引を追加</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCameraModal(true)}
+                className="bg-indigo-600 text-white py-2 px-3 rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-1"
+              >
+                <Camera size={16} />
+                カメラで読取
+              </button>
+              <button
+                onClick={addTransaction}
+                className="bg-blue-600 text-white py-2 px-3 rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1"
+              >
+                <Check size={16} />
+                取引を追加
+              </button>
+            </div>
           </div>
-          
           <div className="space-y-4">
+            {/* 取引タイプ */}
             <div className="flex gap-4">
               <label className="flex items-center flex-1">
                 <input
                   type="radio"
                   value="income"
                   checked={type === 'income'}
-                  onChange={(e) => { setType(e.target.value); setCategory(''); }}
+                  onChange={e => { setType(e.target.value); setCategory(''); }}
                   className="mr-2"
                 />
                 <span className="text-green-600 font-semibold">収入</span>
@@ -803,13 +425,13 @@ const AddView = ({
                   type="radio"
                   value="expense"
                   checked={type === 'expense'}
-                  onChange={(e) => { setType(e.target.value); setCategory(''); }}
+                  onChange={e => { setType(e.target.value); setCategory(''); }}
                   className="mr-2"
                 />
                 <span className="text-red-600 font-semibold">支出</span>
               </label>
             </div>
-
+            {/* 金額 */}
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>金額</label>
               <input
@@ -817,18 +439,18 @@ const AddView = ({
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={e => setAmount(e.target.value)}
                 placeholder="金額を入力"
                 className={`w-full px-3 py-3 border rounded-md text-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 autoComplete="off"
               />
             </div>
-
+            {/* カテゴリー */}
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>カテゴリー</label>
               <select
                 value={category}
-                onChange={(e) => {
+                onChange={e => {
                   if (e.target.value === '__ADD_NEW__') {
                     setShowCategoryManager(true);
                   } else {
@@ -842,41 +464,29 @@ const AddView = ({
                 <option value="__ADD_NEW__" className="text-blue-600 font-medium">➕ 新しいカテゴリを追加</option>
               </select>
             </div>
-
+            {/* 詳細 */}
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>詳細</label>
               <textarea
                 value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                placeholder="詳細を入力
-例：
-・商品名
-・購入場所
-・メモ"
+                onChange={e => setDetails(e.target.value)}
+                placeholder={`詳細を入力\n例：\n・商品名\n・購入場所\n・メモ`}
                 rows={4}
                 className={`w-full px-3 py-3 border rounded-md resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 autoComplete="off"
               />
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>買ったものの詳細、場所、メモなどを自由に記入できます</p>
             </div>
-
+            {/* 日付 */}
             <div>
               <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>日付</label>
               <input
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={e => setDate(e.target.value)}
                 className={`w-full px-3 py-3 border rounded-md ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
               />
             </div>
-
-            <button
-              onClick={addTransaction}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-lg font-semibold"
-            >
-              <Check size={20} />
-              取引を追加
-            </button>
           </div>
         </div>
       </div>
@@ -1542,7 +1152,8 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
               >
                 API KEYを保存
               </button>
-              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+              >
                 Google AI StudioでGemini API KEYを取得してください<br />
                 <a
                   href="https://aistudio.google.com/app/apikey"
@@ -1564,13 +1175,13 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
             </div>
           </div>
         </div>
-  
+
         {/* 基本設定 */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
           <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
             基本設定
           </h2>
-  
+
           <div className="space-y-4">
             {/* ダークモード */}
             <div className="flex items-center justify-between">
@@ -1587,7 +1198,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
                 {darkMode ? 'ON' : 'OFF'}
               </button>
             </div>
-  
+
             {/* 自動保存 */}
             <div className="flex items-center justify-between">
               <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>自動保存</span>
@@ -1604,7 +1215,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
                 {autoSave ? 'ON' : 'OFF'}
               </button>
             </div>
-  
+
             {/* カテゴリ管理 */}
             <div className="flex items-center justify-between">
               <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>カテゴリ管理</span>
@@ -1615,7 +1226,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
                 管理
               </button>
             </div>
-  
+
             {/* 最終保存日時 */}
             {lastSaved && (
               <div className="flex items-center justify-between">
@@ -1628,7 +1239,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
           </div>
         </div>
 
-        {/* ★★★ AIツールセクションを追加 ★★★ */}
+        {/* AIツールセクション */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
           <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
             🤖 AIツール
@@ -1691,13 +1302,13 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
             </div>
           </div>
         </div>
-  
+
         {/* データ管理 */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6`}>
           <h2 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
             データ管理
           </h2>
-  
+
           <div className="space-y-3">
             <button
               onClick={saveData}
@@ -1706,7 +1317,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
               <Database size={20} />
               手動保存
             </button>
-  
+
             <button
               onClick={exportData}
               className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
@@ -1714,7 +1325,7 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
               <Download size={20} />
               データエクスポート
             </button>
-  
+
             <label className="w-full bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
               <Upload size={20} />
               データインポート
@@ -1725,603 +1336,3 @@ const StatsView = ({ darkMode, formatAmount, monthlyIncome, monthlyExpense, cate
       </div>
     );
   };
-  
-const CategoryManagerModal = ({
-  darkMode, setShowCategoryManager, newCategoryType, setNewCategoryType, newCategoryName,
-  setNewCategoryName, newCategoryIcon, setNewCategoryIcon, addCustomCategory, customCategories,
-  deleteCustomCategory, availableIcons, customCategoryIcons
-}) => (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col`}>
-      <div className="p-6 border-b">
-        <div className="flex items-center justify-between">
-          <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-            カテゴリ管理
-          </h2>
-          <button
-            onClick={() => setShowCategoryManager(false)}
-            className={`p-2 rounded-md ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-          >
-            <X size={20} />
-          </button>
-        </div>
-      </div>
-
-      <div className="p-6 overflow-y-auto">
-        {/* 新規カテゴリ追加 */}
-        <div className="mb-6 p-4 border rounded-lg">
-          <h3 className={`font-medium mb-3 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-            新規カテゴリ追加
-          </h3>
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="income"
-                  checked={newCategoryType === 'income'}
-                  onChange={(e) => setNewCategoryType(e.target.value)}
-                  className="mr-2"
-                />
-                <span className="text-green-600 text-sm">収入</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="expense"
-                  checked={newCategoryType === 'expense'}
-                  onChange={(e) => setNewCategoryType(e.target.value)}
-                  className="mr-2"
-                />
-                <span className="text-red-600 text-sm">支出</span>
-              </label>
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="カテゴリ名"
-                className={`flex-1 px-3 py-2 border rounded-md ${
-                  darkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-              />
-              <button
-                onClick={addCustomCategory}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-              >
-                追加
-              </button>
-            </div>
-
-            {/* アイコン選択 */}
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                アイコン
-              </label>
-              <div className="grid grid-cols-6 gap-2 max-h-24 overflow-y-auto">
-                {Object.keys(availableIcons).map(iconName => {
-                  const IconComponent = availableIcons[iconName];
-                  return (
-                    <button
-                      key={iconName}
-                      onClick={() => setNewCategoryIcon(iconName)}
-                      className={`p-2 rounded-md border-2 transition-colors ${
-                        newCategoryIcon === iconName
-                          ? 'border-blue-500 bg-blue-100'
-                          : darkMode
-                            ? 'border-gray-600 hover:border-gray-500'
-                            : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <IconComponent size={20} className={newCategoryIcon === iconName ? 'text-blue-600' : ''} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* カスタムカテゴリ一覧 */}
-        <div className="space-y-4">
-          {/* 収入カテゴリ */}
-          {customCategories.income.length > 0 && (
-            <div>
-              <h4 className={`font-medium mb-2 text-green-600`}>収入カテゴリ</h4>
-              <div className="space-y-2">
-                {customCategories.income.map(cat => {
-                  const IconComponent = availableIcons[customCategoryIcons[cat]] || Coffee;
-                  return (
-                    <div key={cat} className="flex items-center justify-between p-2 bg-green-50 rounded">
-                      <div className="flex items-center gap-2">
-                        <IconComponent size={16} className="text-green-600" />
-                        <span className="text-sm text-green-800">{cat}</span>
-                      </div>
-                      <button
-                        onClick={() => deleteCustomCategory(cat, 'income')}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* 支出カテゴリ */}
-          {customCategories.expense.length > 0 && (
-            <div>
-              <h4 className={`font-medium mb-2 text-red-600`}>支出カテゴリ</h4>
-              <div className="space-y-2">
-                {customCategories.expense.map(cat => {
-                  const IconComponent = availableIcons[customCategoryIcons[cat]] || Coffee;
-                  return (
-                    <div key={cat} className="flex items-center justify-between p-2 bg-red-50 rounded">
-                      <div className="flex items-center gap-2">
-                        <IconComponent size={16} className="text-red-600" />
-                        <span className="text-sm text-red-800">{cat}</span>
-                      </div>
-                      <button
-                        onClick={() => deleteCustomCategory(cat, 'expense')}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {customCategories.income.length === 0 && customCategories.expense.length === 0 && (
-            <p className={`text-center py-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              カスタムカテゴリがありません
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const SimpleBudgetApp = () => {
-  const navigate = useNavigate();
-  // 基本データ
-  const [transactions, setTransactions] = useState([]);
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('');
-  const [details, setDetails] = useState('');
-  const [type, setType] = useState('expense');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // UI状態
-  const [showFilters, setShowFilters] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [currentView, setCurrentView] = useState('home');
-
-  // モーダル状態
-  const [selectedTransaction, setSelectedTransaction] = useState(null);
-  const [showTransactionDetail, setShowTransactionDetail] = useState(false);
-  const [showEditTransaction, setShowEditTransaction] = useState(false);
-
-  // 設定
-  const [darkMode, setDarkMode] = useState(false);
-  const [autoSave, setAutoSave] = useState(true);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [geminiApiKey, setGeminiApiKey] = useState('');
-
-  // 通知
-  const [notification, setNotification] = useState(null);
-
-  // カテゴリ管理
-  const [customCategories, setCustomCategories] = useState({ income: [], expense: [] });
-  const [customCategoryIcons, setCustomCategoryIcons] = useState({});
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryType, setNewCategoryType] = useState('expense');
-  const [newCategoryIcon, setNewCategoryIcon] = useState('Coffee');
-
-  // ★★★★★ 新機能用のStateを追加 ★★★★★
-  const [showBudgetPlanner, setShowBudgetPlanner] = useState(false);
-  const [suggestedBudget, setSuggestedBudget] = useState(null);
-  const [isPlanningBudget, setIsPlanningBudget] = useState(false);
-
-  const availableIcons = {
-    'Home': Home, 'Car': Car, 'Utensils': Utensils, 'ShoppingCart': ShoppingCart, 'Heart': Heart, 'Briefcase': Briefcase, 'GraduationCap': GraduationCap, 'Plane': Plane, 'Coffee': Coffee, 'Gift': Gift, 'Music': Music, 'Smartphone': Smartphone, 'Gamepad2': Gamepad2, 'TrendingUp': TrendingUp, 'Wallet': Wallet, 'Database': Database, 'Settings': Settings, 'BarChart3': BarChart3
-  };
-
-  const defaultCategories = {
-    income: ['給与', '副収入', 'ボーナス', '投資', 'その他'],
-    expense: ['食費', '交通費', '光熱費', '家賃', '娯楽', '衣服', '医療', '雑費']
-  };
-
-  const categories = {
-    income: [...defaultCategories.income, ...customCategories.income],
-    expense: [...defaultCategories.expense, ...customCategories.expense]
-  };
-
-  const categoryIcons = {
-    '食費': Utensils, '交通費': Car, '光熱費': Home, '家賃': Home, '娯楽': Gamepad2, '衣服': ShoppingCart, '医療': Heart, '雑費': ShoppingCart, '給与': Briefcase, '副収入': Briefcase, 'ボーナス': Gift, '投資': TrendingUp, 'その他': Coffee,
-    ...Object.keys(customCategoryIcons).reduce((acc, category) => {
-      acc[category] = availableIcons[customCategoryIcons[category]] || Coffee;
-      return acc;
-    }, {})
-  };
-
-  const goHome = () => {
-    navigate('/');
-  };
-
-  const showNotification = (message, type = 'info') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const saveData = () => {
-    try {
-      const data = { transactions, customCategories, customCategoryIcons, timestamp: new Date().toISOString() };
-      localStorage.setItem('simple_budget_data', JSON.stringify(data));
-      setLastSaved(new Date());
-    } catch (error) {
-      showNotification('データの自動保存に失敗しました', 'error');
-    }
-  };
-
-  const manualSaveData = () => {
-    try {
-      const data = { transactions, customCategories, customCategoryIcons, timestamp: new Date().toISOString() };
-      localStorage.setItem('simple_budget_data', JSON.stringify(data));
-      setLastSaved(new Date());
-      showNotification('データを保存しました', 'success');
-    } catch (error) {
-      showNotification('保存に失敗しました', 'error');
-    }
-  };
-
-  const loadData = () => {
-    try {
-      const savedData = localStorage.getItem('simple_budget_data');
-      if (savedData) {
-        const data = JSON.parse(savedData);
-        setTransactions(data.transactions || []);
-        setCustomCategories(data.customCategories || { income: [], expense: [] });
-        setCustomCategoryIcons(data.customCategoryIcons || {});
-        if (data.timestamp) setLastSaved(new Date(data.timestamp));
-      }
-    } catch (error) {
-      showNotification('データの読み込みに失敗しました', 'error');
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    const savedApiKey = localStorage.getItem('gemini_api_key') || '';
-    setDarkMode(savedDarkMode);
-    setGeminiApiKey(savedApiKey);
-  }, []);
-
-  useEffect(() => {
-    if (autoSave) {
-      const timeoutId = setTimeout(saveData, 1000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [transactions, customCategories, customCategoryIcons, autoSave]);
-
-  useEffect(() => {
-    document.body.className = darkMode ? 'dark' : '';
-    localStorage.setItem('darkMode', darkMode);
-  }, [darkMode]);
-
-  const saveApiKey = (apiKey) => {
-    localStorage.setItem('gemini_api_key', apiKey);
-    setGeminiApiKey(apiKey);
-    showNotification('API KEYを保存しました', 'success');
-  };
-
-  const addTransaction = () => {
-    if (!amount || !category || !details.trim()) {
-      showNotification('すべての項目を入力してください', 'warning');
-      return;
-    }
-    const newTransaction = { id: Date.now(), amount: parseFloat(amount), category, details: details.trim(), type, date, timestamp: new Date().toISOString() };
-    setTransactions(prev => [newTransaction, ...prev]);
-    setAmount('');
-    setCategory('');
-    setDetails('');
-    setCurrentView('home');
-    showNotification('取引を追加しました', 'success');
-  };
-
-  const deleteTransaction = (id) => {
-    if (window.confirm('この取引を削除しますか？')) {
-      setTransactions(prev => prev.filter(t => t.id !== id));
-      showNotification('取引を削除しました', 'info');
-    }
-  };
-
-  const showTransactionDetails = (transaction) => {
-    setSelectedTransaction(transaction);
-    setShowTransactionDetail(true);
-  };
-
-  const openEditTransaction = (transaction) => {
-    setSelectedTransaction(transaction);
-    setAmount(transaction.amount.toString());
-    setCategory(transaction.category);
-    setDetails(transaction.details || transaction.description || '');
-    setType(transaction.type);
-    setDate(transaction.date);
-    setShowEditTransaction(true);
-    setShowTransactionDetail(false);
-  };
-
-  const updateTransaction = () => {
-    if (!amount || !category || !details.trim()) {
-      showNotification('すべての項目を入力してください', 'warning');
-      return;
-    }
-    const updatedTransaction = { ...selectedTransaction, amount: parseFloat(amount), category, details: details.trim(), type, date, updatedAt: new Date().toISOString() };
-    setTransactions(prev => prev.map(t => t.id === selectedTransaction.id ? updatedTransaction : t));
-    setShowEditTransaction(false);
-    setSelectedTransaction(null);
-    setAmount('');
-    setCategory('');
-    setDetails('');
-    showNotification('取引を更新しました', 'success');
-  };
-
-  const cancelEdit = () => {
-    setShowEditTransaction(false);
-    setSelectedTransaction(null);
-    setAmount('');
-    setCategory('');
-    setDetails('');
-  };
-
-  const addCustomCategory = () => {
-    if (!newCategoryName.trim()) {
-      showNotification('カテゴリ名を入力してください', 'warning');
-      return;
-    }
-    const allCategories = [...defaultCategories[newCategoryType], ...customCategories[newCategoryType]];
-    if (allCategories.includes(newCategoryName.trim())) {
-      showNotification('そのカテゴリは既に存在します', 'warning');
-      return;
-    }
-    setCustomCategories(prev => ({ ...prev, [newCategoryType]: [...prev[newCategoryType], newCategoryName.trim()] }));
-    setCustomCategoryIcons(prev => ({ ...prev, [newCategoryName.trim()]: newCategoryIcon }));
-    setNewCategoryName('');
-    setNewCategoryIcon('Coffee');
-    showNotification('カテゴリを追加しました', 'success');
-  };
-
-  const deleteCustomCategory = (categoryName, categoryType) => {
-    if (window.confirm(`カテゴリ「${categoryName}」を削除しますか？このカテゴリの取引は「その他」に分類されます。`)) {
-      setCustomCategories(prev => ({ ...prev, [categoryType]: prev[categoryType].filter(cat => cat !== categoryName) }));
-      setCustomCategoryIcons(prev => {
-        const newIcons = { ...prev };
-        delete newIcons[categoryName];
-        return newIcons;
-      });
-      setTransactions(prev => prev.map(t => t.category === categoryName ? { ...t, category: 'その他' } : t));
-      showNotification('カテゴリを削除しました', 'info');
-    }
-  };
-
-  const exportData = () => {
-    const data = { transactions, customCategories, customCategoryIcons, exportDate: new Date().toISOString() };
-    const dataStr = JSON.stringify(data, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = `budget_${new Date().toISOString().split('T')[0]}.json`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-    showNotification('データをエクスポートしました', 'success');
-  };
-
-  const importData = (event) => {
-    const file = event.target.files[0];
-    if (file && window.confirm('データをインポートしますか？現在のデータは上書きされます。')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = JSON.parse(e.target.result);
-          if (data.transactions) setTransactions(data.transactions);
-          if (data.customCategories) setCustomCategories(data.customCategories);
-          if (data.customCategoryIcons) setCustomCategoryIcons(data.customCategoryIcons);
-          showNotification('データをインポートしました', 'success');
-        } catch (error) {
-          showNotification('ファイルの形式が正しくありません', 'error');
-        }
-      };
-      reader.readAsText(file);
-    }
-    event.target.value = null;
-  };
-
-  const filteredTransactions = transactions.filter(transaction => {
-    const details = transaction.details || transaction.description || '';
-    const matchesSearch = details.toLowerCase().includes(searchTerm.toLowerCase()) || transaction.category.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !filterCategory || transaction.category === filterCategory;
-    const matchesType = !filterType || transaction.type === filterType;
-    return matchesSearch && matchesCategory && matchesType;
-  });
-
-  const balance = transactions.reduce((total, t) => t.type === 'income' ? total + t.amount : total - t.amount, 0);
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyTransactions = transactions.filter(t => t.date.startsWith(currentMonth));
-  const monthlyIncome = monthlyTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const monthlyExpense = monthlyTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-
-  const formatAmount = (amount) => new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(amount);
-  const formatDate = (dateString) => new Date(dateString).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
-
-    // ★★★★★ 新機能1: AI予算プランナーのロジック ★★★★★
-  const handleGenerateBudget = async () => {
-    if (!geminiApiKey) {
-      showNotification('この機能にはGemini API KEYが必要です。', 'warning');
-      return;
-    }
-    if (transactions.filter(t => t.type === 'expense').length < 10) {
-      showNotification('分析するには、少なくとも10件の支出データが必要です。', 'warning');
-      return;
-    }
-
-    setIsPlanningBudget(true);
-    setSuggestedBudget(null);
-
-    try {
-      // 過去90日間の支出データを集計
-      const threeMonthsAgo = new Date();
-      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-      
-      const recentExpenses = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= threeMonthsAgo);
-      const expenseByCategory = recentExpenses.reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-
-      // 月平均に変換
-      const monthlyAvgExpenses = Object.entries(expenseByCategory).reduce((acc, [cat, total]) => {
-        acc[cat] = Math.round(total / 3);
-        return acc;
-      }, {});
-
-      const prompt = `あなたは家計アドバイザーです。以下のユーザーの平均的な月間支出データに基づき、節約を意識した現実的な月間予算案をJSON形式で提案してください。キーはカテゴリ名、値は予算額とします。
-
-【支出データ】
-${JSON.stringify(monthlyAvgExpenses)}
-`;
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generation_config: { response_mime_type: "application/json" },
-        })
-      });
-
-      if (!response.ok) throw new Error('予算案の作成に失敗しました。');
-      
-      const data = await response.json();
-      const resultText = data.candidates[0].content.parts[0].text;
-      const budgetData = JSON.parse(resultText);
-      
-      setSuggestedBudget(budgetData);
-      setShowBudgetPlanner(true);
-
-    } catch (error) {
-      console.error(error);
-      showNotification('予算案の作成中にエラーが発生しました。', 'error');
-    } finally {
-      setIsPlanningBudget(false);
-    }
-  };
-
-  return (
-    <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} transition-colors`} style={{position: 'fixed', width: '100%', height: '100%', overflow: 'auto'}}>
-      {notification && (
-        <div className="fixed top-4 left-4 right-4 z-50" style={{pointerEvents: 'none'}}>
-          <div className={`p-4 rounded-lg shadow-lg ${
-            notification.type === 'success' ? 'bg-green-100 text-green-800 border-green-300' :
-            notification.type === 'error' ? 'bg-red-100 text-red-800 border-red-300' :
-            notification.type === 'warning' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-            'bg-blue-100 text-blue-800 border-blue-300'
-          } border`}>
-            <div className="flex items-center gap-2">
-              {notification.type === 'success' && <Check size={16} />}
-              {notification.type === 'error' && <AlertCircle size={16} />}
-              {notification.type === 'warning' && <AlertCircle size={16} />}
-              {notification.type === 'info' && <Info size={16} />}
-              <span className="font-medium">{notification.message}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-md mx-auto p-4" style={{paddingBottom: '100px'}}>
-        <div className="mb-6">
-          {/* ▼▼▼ 変更点(4/4): ヘッダーにホームボタンを追加 ▼▼▼ */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-               <button onClick={goHome} className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                <Home className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-              </button>
-              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>AI家計簿</h1>
-            </div>
-            <Wallet className="text-blue-600" size={32} />
-          </div>
-        </div>
-
-        {currentView === 'home' && (
-          <HomeView
-            darkMode={darkMode} balance={balance} formatAmount={formatAmount} monthlyIncome={monthlyIncome} monthlyExpense={monthlyExpense} searchTerm={searchTerm} setSearchTerm={setSearchTerm} showFilters={showFilters} setShowFilters={setShowFilters} filterCategory={filterCategory} setFilterCategory={setFilterCategory} filterType={filterType} setFilterType={setFilterType} categories={categories} filteredTransactions={filteredTransactions} categoryIcons={categoryIcons} formatDate={formatDate} deleteTransaction={deleteTransaction} transactions={transactions} showTransactionDetails={showTransactionDetails}
-          />
-        )}
-        {currentView === 'add' && (
-          <AddView
-            darkMode={darkMode} type={type} setType={setType} amount={amount} setAmount={setAmount} category={category} setCategory={setCategory} setShowCategoryManager={setShowCategoryManager} categories={categories} details={details} setDetails={setDetails} date={date} setDate={setDate} addTransaction={addTransaction} geminiApiKey={geminiApiKey} showNotification={showNotification}
-          />
-        )}
-        {currentView === 'aiAnalysis' && (
-          <AIAnalysisView
-            darkMode={darkMode} transactions={transactions} formatAmount={formatAmount} categories={categories} monthlyIncome={monthlyIncome} monthlyExpense={monthlyExpense} geminiApiKey={geminiApiKey} showNotification={showNotification}
-          />
-        )}
-        {currentView === 'stats' && (
-          <StatsView
-            darkMode={darkMode} formatAmount={formatAmount} monthlyIncome={monthlyIncome} monthlyExpense={monthlyExpense} categories={categories} monthlyTransactions={monthlyTransactions} categoryIcons={categoryIcons}
-          />
-        )}
-        {currentView === 'settings' && (
-          <SettingsView
-            darkMode={darkMode} setDarkMode={setDarkMode} autoSave={autoSave} setAutoSave={setAutoSave} setShowCategoryManager={setShowCategoryManager} lastSaved={lastSaved} saveData={manualSaveData} exportData={exportData} importData={importData} geminiApiKey={geminiApiKey} saveApiKey={saveApiKey} showNotification={showNotification} transactions={transactions} onGenerateBudget={handleGenerateBudget} isPlanningBudget={isPlanningBudget}
-          />
-        )}
-      </div>
-
-      <NavigationBar darkMode={darkMode} currentView={currentView} setCurrentView={setCurrentView} />
-
-      {/* ★★★★★ 新機能1: モーダルをレンダリング ★★★★★ */}
-      <BudgetPlannerModal
-        isOpen={showBudgetPlanner}
-        onClose={() => setShowBudgetPlanner(false)}
-        budget={suggestedBudget}
-        formatAmount={formatAmount}
-      />
-
-
-      {showCategoryManager && (
-        <CategoryManagerModal
-          darkMode={darkMode} setShowCategoryManager={setShowCategoryManager} newCategoryType={newCategoryType} setNewCategoryType={setNewCategoryType} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} newCategoryIcon={newCategoryIcon} setNewCategoryIcon={setNewCategoryIcon} addCustomCategory={addCustomCategory} customCategories={customCategories} deleteCustomCategory={deleteCustomCategory} availableIcons={availableIcons} customCategoryIcons={customCategoryIcons}
-        />
-      )}
-
-      {showTransactionDetail && (
-        <TransactionDetailModal
-          darkMode={darkMode} transaction={selectedTransaction} onClose={() => setShowTransactionDetail(false)} onEdit={openEditTransaction} formatAmount={formatAmount} formatDate={formatDate} categoryIcons={categoryIcons}
-        />
-      )}
-
-      {showEditTransaction && (
-        <EditTransactionModal
-          darkMode={darkMode} transaction={selectedTransaction} amount={amount} setAmount={setAmount} category={category} setCategory={setCategory} details={details} setDetails={setDetails} type={type} setType={setType} date={date} setDate={setDate} categories={categories} onUpdate={updateTransaction} onCancel={cancelEdit} setShowCategoryManager={setShowCategoryManager}
-        />
-      )}
-    </div>
-  );
-};
-
-export default SimpleBudgetApp;

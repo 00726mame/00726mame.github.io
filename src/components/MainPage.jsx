@@ -32,7 +32,7 @@ const MainPage = () => {
   const openApp = (appName) => {
     try {
       navigate(`/${appName}`);
-    } catch (error) {
+    } catch {
       showNotification('アプリの起動に失敗しました', 'error');
     }
   };
@@ -138,21 +138,28 @@ const MainPage = () => {
               アプリを開く
             </button>
           </div>
+
+          {/* SmartShopperAIカード削除 */}
         </div>
 
         {/* フッター */}
         <div className="text-center">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <button 
-              onClick={toggleDarkMode} 
-              className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-            >
-              {darkMode ? (
-                <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-              ) : (
-                <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-              )}
-            </button>
+          <div className="flex flex-col items-center gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={toggleDarkMode} 
+                className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                aria-label="テーマ切替"
+              >
+                {darkMode ? (
+                  <Sun className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                ) : (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                )}
+              </button>
+              <span className="text-xs text-gray-500 dark:text-gray-400">（端末設定とアプリ内切替どちらも対応）</span>
+            </div>
+            <span className="text-xs text-gray-400">端末のダーク/ライト設定に自動追従。アプリ内でも切替可能。</span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Created with ❤️ for better financial management
